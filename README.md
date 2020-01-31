@@ -14,8 +14,8 @@ I assume you have a Monitor, Keyboard, and Mouse connected.  IMHO its best to go
 - set a good password and change the hostname!
 - turn off the "splash" screen, I like having the boot messages in case something goes wrong.
 - activate ssh server, these extra steps make maintaining a "headless" system almost painless:
-  on your ssh client host create a ssh-id
-  copy it to the Pi with ssh-copy-id pi@your_hostname with ssh-copy-id
+   - on your ssh client host create a ssh-id
+   - copy it to the Pi with: ssh-copy-id pi@your_hostname
   
 #   
 #### These steps are best done in a terminal window: 
