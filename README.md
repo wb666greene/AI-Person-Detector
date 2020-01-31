@@ -4,7 +4,7 @@ The major upgrade is using the Coral TPU and MobilenetSSD-v2_coco for the AI.  T
 
 # Notes from a "virgin" setup of Raspbian Buster Pi3/4, 22JAN2020
 
-Install your OS using the normal instructions.  I'll use a Pi3B+ and Raspbian "Buster" desktop (2019-09-26-raspbian-buster-full.zip) for this example.  IMHO SD cards are cheap, so buy a big enough one to have a "real" system for testing and development, YMMV.
+Install your OS using the normal instructions.  I'll use a Pi3B+ and Raspbian "Buster" desktop (2019-09-26-raspbian-buster-full.zip) for this example.  IMHO SD cards are cheap, so buy a big enough one to have a "real" system for testing and development, YMMV.  With Buster the same card can be used in a Pi3 or Pi4.
 
 Once you've done the initial boot/setup steps, here are some things I like to do that aren't setup by default. 
 I assume you have a Monitor, Keyboard, and Mouse connected.  IMHO its best to go "headless" only after everything is working.  I'll just outline the basic steps, if Google doesn't give you the details raise an "issue" and we'll flesh out the details.  Feel free to skip any you don't like.
