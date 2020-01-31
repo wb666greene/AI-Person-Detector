@@ -104,17 +104,12 @@ I assume you have a Monitor, Keyboard, and Mouse connected.  IMHO its best to go
 - #### The MobilenetSSD-v2_coco model files are too large for GitHub.  
 I don't think this step can be run on the Pi.  Here is my model downloader command:
 
-~/intel/openvino/deployment_tools/tools/model_downloader$ ./downloader.py
---name ssd_mobilenet_v2_coco
-
+		~/intel/openvino/deployment_tools/tools/model_downloader$ ./downloader.py --name ssd_mobilenet_v2_coco
+		
 And my model optimizer command (you need to chage the /home/wally for your system):
 
-./mo_tf.py --input_model /home/wally/ssdv2/frozen_inference_graph.pb
---tensorflow_use_custom_operations_config
-/home/wally/ssdv2/ssd_v2_support.json
---tensorflow_object_detection_api_pipeline_config
-/home/wally/ssdv2/pipeline.config --data_type FP16 --log_level DEBUG
-      
+	./mo_tf.py --input_model /home/wally/ssdv2/frozen_inference_graph.pb --tensorflow_use_custom_operations_config /home/wally/ssdv2/ssd_v2_support.json --tensorflow_object_detection_api_pipeline_config /home/wally/ssdv2/pipeline.config --data_type FP16 --log_level DEBUG
+	      
    ** At this point you now have a nice version of OpenCV with some extra OpenVINO support functions installed,
    EXCEPT the OpenCV 4.1.2-openvino has issues with mp4 (h.264/h.265) decoding, which breaks using rtsp streams!
    The Pi3B+ is not very usable with rtsp streams and the eariler OpenVINO versions that do work don't support the Pi4. **
