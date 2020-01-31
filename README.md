@@ -1,4 +1,8 @@
-#Notes from a "virgin" setup of Raspbian Buster Pi3/4, 22JAN2020
+This is the next step in the evolution of: https://github.com/wb666greene/AI_enhanced_video_security
+
+The major upgrade is using the Coral TPU and MobilenetSSD-v2_coco for the AI.  The Movidius NCS/NCS2 are still supported, but the *.bin and *.xml files for the MobilenetSSD-v2_coco model are too large to upload to GitHub.
+
+# Notes from a "virgin" setup of Raspbian Buster Pi3/4, 22JAN2020
 
 Install your OS using the normal instructions.  I'll use a Pi3B+ and Raspbian "Buster" desktop (2019-09-26-raspbian-buster-full.zip) for this example.  IMHO SD cards are cheap, so buy a big enough one to have a "real" system for testing and development, YMMV.
 
@@ -6,7 +10,7 @@ Once you've done the initial boot/setup steps, here are some things I like to do
 I assume you have a Monitor, Keyboard, and Mouse connected.  IMHO its best to go "headless" only after everything is working.  I'll just outline the basic steps, if Google doesn't give you the details raise an "issue" and we'll flesh out the details.  Feel free to skip any you don't like.
 
 # 
-####These easiest to do via menu->Preferences->RaspberryPiConfiguration:
+#### These easiest to do via menu->Preferences->RaspberryPiConfiguration:
 - set a good password and change the hostname!
 - turn off the "splash" screen, I like having the boot messages in case something goes wrong.
 - activate ssh server, these extra steps make maintaining a "headless" system almost painless:
@@ -97,13 +101,26 @@ I assume you have a Monitor, Keyboard, and Mouse connected.  IMHO its best to go
 
 -    Optional:  Make the OpenVINO setup happen on every login with: 
       echo "source /opt/intel/openvino/bin/setupvars.sh" >> ~/.bashrc
+- #### The MobilenetSSD-v2_coco model files are too large for GitHub.  
+I don't think this step can be run on the Pi.  Here is my model downloader command:
+
+~/intel/openvino/deployment_tools/tools/model_downloader$ ./downloader.py
+--name ssd_mobilenet_v2_coco
+
+And my model optimizer command (you need to chage the /home/wally for your system):
+
+./mo_tf.py --input_model /home/wally/ssdv2/frozen_inference_graph.pb
+--tensorflow_use_custom_operations_config
+/home/wally/ssdv2/ssd_v2_support.json
+--tensorflow_object_detection_api_pipeline_config
+/home/wally/ssdv2/pipeline.config --data_type FP16 --log_level DEBUG
       
    ** At this point you now have a nice version of OpenCV with some extra OpenVINO support functions installed,
    EXCEPT the OpenCV 4.1.2-openvino has issues with mp4 (h.264/h.265) decoding, which breaks using rtsp streams!
    The Pi3B+ is not very usable with rtsp streams and the eariler OpenVINO versions that do work don't support the Pi4. **
 
 # 
-####Setup the Coral TPU: https://coral.ai/docs/accelerator/get-started/
+#### Setup the Coral TPU: https://coral.ai/docs/accelerator/get-started/
 - Google has recently setup a Debian repo that makes it really easy!
       echo "deb https://packages.cloud.google.com/apt coral-edgetpu-stable main" | sudo tee /etc/apt/sources.list.d/coral-edgetpu.list
       curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key add -
@@ -145,7 +162,7 @@ I assume you have a Monitor, Keyboard, and Mouse connected.  IMHO its best to go
    I have a netcam with "h.265+" using a Coral TPU and OpenCV-4.1.2-openvino it gets ~3.3 fps, monotonically increasing latency and eventually crashes.  Using pip installed OpenCV-4.1.0 it gets 5 fps (what the camera is set for) and latency is the typical rtsp ~2 seconds.
    
 # 
-####At this point you can download and run my Python code. 
+#### At this point you can download and run my Python code. 
 -   After download and unpacking, put the folder in /home/pi and rename it to AI, otherwise you'll have to edit all the controller scripts.
      cd /home/pi/AI
      chmod 755 AI_dev.py AI_OVmt.py TPU.py  Pi4TPU.py *.sh
@@ -167,7 +184,7 @@ I assume you have a Monitor, Keyboard, and Mouse connected.  IMHO its best to go
    e) Exit the AI with Ctrl-C in the terminal window for "q" in the openCV display window
 
 # 
-####Need to do some node-red installation. 
+#### Need to do some node-red installation. 
 - **You can skip this if you just want to use the AI and do your own thing with integration.**
 - If not familar with using node-red, start here:  https://nodered.org/docs/tutorials/
 and here:  http://www.steves-internet-guide.com/node-red-overview/
@@ -196,7 +213,7 @@ If you learn by watching videos this is a good place to start:  https://www.yout
       a starting point for you, but you can evaluate the AI performance, and with a WiFi connected Cell Phone adjust camera positions.
 
 #    
-####Now you can run the AI same as in before but leaving off the -ls option.
+#### Now you can run the AI same as in before but leaving off the -ls option.
    Node-red saves the detections which makes it easier to change the paths and add meaningful names for the cameras.
    You can also change -d 1 to -d 0 which will improve performance by skipping the X display of the live images. 
    You can view them one camera at a time in the UI webpage.
@@ -214,8 +231,8 @@ If you learn by watching videos this is a good place to start:  https://www.yout
    You can change the node-red flow to meet your needs and redeploy without stopping and restarting the AI which can be a  real time saver when testing.
   The startup scripts used by the "Launch" inject nodes use -d 0 option.
 
-# 
-####Real world advice.
+#  
+#### Real world advice.
 - SD cards are not the most reliable storage, I recommend formatting  a USB stick ext4 and creating a symlink to it
        for the detections, either:
        - If using local save (delete /home/pi/AI/detect that might have got created while testing):
