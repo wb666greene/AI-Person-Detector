@@ -161,11 +161,19 @@ And my model optimizer command (you need to chage the /home/wally for your syste
 -   After download and unpacking, put the folder in /home/pi and rename it to AI, otherwise you'll have to edit all the controller scripts.
      cd /home/pi/AI
      chmod 755 AI_dev.py AI_OVmt.py TPU.py  Pi4TPU.py *.sh
--    There arefour variations of the AI code: AI_dev.py, AI_OVmt.py, TPU.py, and Pi4TPU.py
+-    There are four variations of the AI code: AI_dev.py, AI_OVmt.py, TPU.py, and Pi4TPU.py
+
       AI_dev.py has the most options and can run multiple AI inference threads, its mostly for development and testing, it suports PiCamera module.
+      
       AI_OVmt.py by only supports NCS/NCS2 and CPU AI (useless on Pi usable on i3-4025 or better), defults to a single Movidius NCS device.
+      
       TPU.py supports a single Coral TPU, no Movidius, no CPU.
+      
       Pi4TPU.py is TPU.py with the Pi Camera module  -picam option from AI_dev.py added and -ls local save option removed.
+      
+      TPU.py, Pi4TPU, & AI_OVmt.py are stand-alone single file scripts needing only some pip installed modules.
+      
+      AI_dev.py also needs all the *_thread.py files in the same directory along with it.
 -    Create a file to specify your onvif snapshot URLs or rtsp stream URLs do a test run:
       If using a Coral TPU and local KVM in a terminal window or ssh -X login:
          ./AI_dev.py -cam snapshots.txt -d 1 -nTPU 1 -ls
