@@ -4,6 +4,8 @@ https://github.com/wb666greene/AI-Person-Detector/wiki/Camera-notes
 
 The major upgrade is using the Coral TPU and MobilenetSSD-v2_coco for the AI.  The Movidius NCS/NCS2 are still supported, but the *.bin and *.xml files for the MobilenetSSD-v2_coco model are too large to upload to GitHub.
 
+The Ai is pure Python3 code and should work on any system that can run a python3 version supported by Google Coral TPU or Intel OpenVINO installers with an OpenCV version capable of decoding h264/h.265 rtsp streams.  If you have cameras capable of delivering "full resolution" Onvif snapshots, are using USB webcams, mjpeg stream cameras (or motioneyOS), or the PiCamera module the h.264/h.265 decoding issue is moot.
+
 
 # Notes from a "virgin" setup of Raspbian Buster Pi3/4, 22JAN2020
 
@@ -219,6 +221,8 @@ If you learn by watching videos this is a good place to start:  https://www.yout
       a starting point for you, but you can evaluate the AI performance, and with a WiFi connected Cell Phone adjust camera positions.
 - here is a screen shot of how I've modified the Viewer-Controller flow for my use, although I'm still testing/debugging so the watchdog is not wired up. https://github.com/wb666greene/AI-Person-Detector/blob/master/sample/Controller-Viewer.jpg
 
+- The sample images on the wiki show why I need a "spacial" filter to not alert on people not on my property.  https://github.com/wb666greene/AI-Person-Detector/wiki/Camera-notes  In some regards the AI is "too good".  The filter function in the sample node-red flow has the skeleton of the nodejs code I use.  I use GIMP to get the polygon coordinates that the lower right corner of the detection must be inside of to generate an alert.
+
 #    
 #### Now you can run the AI same as in before but leaving off the -ls option.
    Node-red saves the detections which makes it easier to change the paths and add meaningful names for the cameras.
@@ -262,7 +266,7 @@ If you learn by watching videos this is a good place to start:  https://www.yout
        It needs to have "less secure access" enabled or you need to create an "app key" for it.
 - I find MMS texts usually arrive faster (to the same phone) than Email with attachment, but I send myself both.  All
        the four major US carriers have MMS text to Email gateways.  The minor carriers are hit and miss,  Cricket does, Ting doesn't,
-       for example.  A Google search for your carrier and "Email to MMS Gateway" should get the answer.
+       for example.  A Google search for your carrier and "Email to MMS Gateway" should get the answer. I'd be thrilled to accept modified node-red flows and wiki instructions for using Telegram or other push notification options.
 - When using rtsp cameras, its best to add 2>/dev/null at the end of the launch command as many (most) cameras throw warnings
        when decoded with OpenCV that make the log files large and mostly useless.
 - AI_dev.py still supports using the original NCS version 1 SDK.  If you have it installed, setting up OpenVINO doesn't break anything.
