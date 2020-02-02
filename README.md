@@ -1,6 +1,9 @@
 This is the next step in the evolution of: https://github.com/wb666greene/AI_enhanced_video_security
+For some examples of this AI in real-world action checkout the wiki:
+https://github.com/wb666greene/AI-Person-Detector/wiki/Camera-notes
 
 The major upgrade is using the Coral TPU and MobilenetSSD-v2_coco for the AI.  The Movidius NCS/NCS2 are still supported, but the *.bin and *.xml files for the MobilenetSSD-v2_coco model are too large to upload to GitHub.
+
 
 # Notes from a "virgin" setup of Raspbian Buster Pi3/4, 22JAN2020
 
@@ -214,6 +217,7 @@ If you learn by watching videos this is a good place to start:  https://www.yout
       This views the "dashboard" which does the basic functions like setting the notification mode, viewing a camera, etc.
       When headless, you control it from this webpage, or via MQTT messages from your home automation system.  This is only
       a starting point for you, but you can evaluate the AI performance, and with a WiFi connected Cell Phone adjust camera positions.
+- here is a screen shot of how I've modified the Viewer-Controller flow for my use, although I'm still testing/debugging so the watchdog is not wired up. https://github.com/wb666greene/AI-Person-Detector/blob/master/sample/Controller-Viewer.jpg
 
 #    
 #### Now you can run the AI same as in before but leaving off the -ls option.
