@@ -262,6 +262,7 @@ If you learn by watching videos this is a good place to start:  https://www.yout
 - To use the PiCamera module, launch AI_dev.py with the --PiCam option in addition to any others.
        You can mix the PiCmaera module with other cameras, but the Pi3 is pretty useless with rtsp streams other than /dev/video
        I got ~8 fps using the PiCamera module at 1296x972 resolution on a Pi3B
+- A great resource to find the rtsp URL for your cameras is: https://security.world/tools/rtsp-finder/ If you get desperate you can try to "reverse engineer" it with wireshark: http://www.iprogrammable.com/2017/11/10/how-to-use-wireshark-to-get-ip-camera-rtsp-url/
 - The "Send Test Email" injection node is useful for setting up your gmail account for sending notifications.
        It needs to have "less secure access" enabled or you need to create an "app key" for it.
 - I find MMS texts usually arrive faster (to the same phone) than Email with attachment, but I send myself both.  All
