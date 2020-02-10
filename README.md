@@ -106,7 +106,7 @@ I assume you have a Monitor, Keyboard, and Mouse connected.  IMHO its best to go
 
 -    Optional:  Make the OpenVINO setup happen on every login with: 
       echo "source /opt/intel/openvino/bin/setupvars.sh" >> ~/.bashrc
-- #### The MobilenetSSD-v2_coco model files are too large for GitHub.  
+- #### The MobilenetSSD-v2_coco OpenVINO model files are too large for GitHub.  
 I don't think these two steps can be run on the Pi.  Here is my model downloader command:
 
 		~/intel/openvino/deployment_tools/tools/model_downloader$ ./downloader.py --name ssd_mobilenet_v2_coco
