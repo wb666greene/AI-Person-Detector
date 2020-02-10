@@ -224,7 +224,7 @@ If you learn by watching videos this is a good place to start:  https://www.yout
 - The sample images on the wiki show why I need a "spacial" filter to not alert on people not on my property.  https://github.com/wb666greene/AI-Person-Detector/wiki/Camera-notes  In some regards the AI is "too good".  The filter function in the sample node-red flow has the skeleton of the nodejs code I use.  I use GIMP to get the polygon coordinates that the lower right corner of the detection must be inside of to generate an alert.
 
 #    
-#### Now you can run the AI same as in before but leaving off the -ls option.
+#### Now you can run the AI same as in before but leaving off the -l s option.
    Node-red saves the detections which makes it easier to change the paths and add meaningful names for the cameras.
    You can also change -d 1 to -d 0 which will improve performance by skipping the X display of the live images. 
    You can view them one camera at a time in the UI webpage.
