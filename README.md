@@ -291,16 +291,17 @@ If you learn by watching videos this is a good place to start:  https://www.yout
       
 
 - **TPU.py with 1080p (HD, 3 fps) and 4K (UHD, 5 fps) rtsp streams.**
-       Pi4B running Raspbian Buster:
-        - 4 HD:     ~11.8 fps (basically processing every frame)
-        - 5 HD:     ~14.7 fps (basically processing every frame) 
-        - 6 HD:     ~15.0 fps, -d 0 (no display) ~16.7 fps
-        - 8 HD:    ~11.6 fps, -d 0 ~14.6 fps
-        - 1 UHD:  ~4.6 fps (basically processing every frame)
-        - 2 UHD:  ~4 fps very high latency makes it useless (Pi4B struggles with decoding 4K streams)
+   -   - Pi4B running Raspbian Buster:
+           - 4 HD:     ~11.8 fps (basically processing every frame)
+           - 5 HD:     ~14.7 fps (basically processing every frame) 
+           - 6 HD:     ~15.0 fps, -d 0 (no display) ~16.7 fps
+           - 8 HD:    ~11.6 fps, -d 0 ~14.6 fps
+           - 1 UHD:  ~4.6 fps (basically processing every frame)
+           - 2 UHD:  ~4 fps very high latency makes it useless (Pi4B struggles with decoding 4K streams)
 
-- **TPU.py on Jetson Nano 3 fps HD and UHD rtsp streams**
-        - 5 UHD (4K)         :  ~14.6 fps (effectively processing every frame!)
-        - 5 UHD 3 HD         :  ~10.3 fps, jumps to ~19.1 fps if -d 0 option used (no live image display)
-        - 4 UHD 4 HD         :  ~16.3 fps, ~22.5 fps with -d 0 option
-        -  5 UHD 10 HD (1080p):  ~4.4 fps, ~7.6 fps with -d 0 option (totally overloaded, get ~39 fps when running on i7-4500U MiniPC)
+- **TPU.py with Nano 3 fps HD and UHD rtsp streams.**
+   -   - Jetson Nano running Ubuntu 18.04:
+           - 5 UHD (4K)         :  ~14.6 fps (effectively processing every frame!)
+           - 5 UHD 3 HD         :  ~10.3 fps, jumps to ~19.1 fps if -d 0 option used (no live image display)
+           - 4 UHD 4 HD         :  ~16.3 fps, ~22.5 fps with -d 0 option
+           - 5 UHD 10 HD (1080p):  ~4.4 fps, ~7.6 fps with -d 0 option (totally overloaded, get ~39 fps when running on i7-4500U MiniPC)
