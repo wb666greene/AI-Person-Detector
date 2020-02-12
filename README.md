@@ -219,7 +219,8 @@ If you learn by watching videos this is a good place to start:  https://www.yout
       This views the "dashboard" which does the basic functions like setting the notification mode, viewing a camera, etc.
       When headless, you control it from this webpage, or via MQTT messages from your home automation system.  This is only
       a starting point for you, but you can evaluate the AI performance, and with a WiFi connected Cell Phone adjust camera positions.
-- here is a screen shot of how I've modified the Viewer-Controller flow for my use, although I'm still testing/debugging so the watchdog is not wired up. https://github.com/wb666greene/AI-Person-Detector/blob/master/sample/Controller-Viewer.jpg
+- Here is a screen shot of how I've modified the Viewer-Controller flow for my use, although I'm still testing/debugging so the watchdog is not wired up. https://github.com/wb666greene/AI-Person-Detector/blob/master/sample/Controller-Viewer.jpg
+- Questions about Node-RED are best asked on this thread where the experts are: [Node-RED Forum](https://discourse.nodered.org/t/ai-enhanced-video-security-system-with-node-red-controller-viewer/21622)
 
 - The sample images on the wiki show why I need a "spacial" filter to not alert on people not on my property.  https://github.com/wb666greene/AI-Person-Detector/wiki/Camera-notes  In some regards the AI is "too good".  The filter function in the sample node-red flow has the skeleton of the nodejs code I use.  I use GIMP to get the polygon coordinates that the lower right corner of the detection must be inside of to generate an alert.
 
