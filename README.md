@@ -6,8 +6,8 @@ The major upgrade is using the Coral TPU and MobilenetSSD-v2_coco for the AI.  T
 
 The Ai is pure Python3 code and should work on any system that can run a python3 version supported by Google Coral TPU or Intel OpenVINO installers with an OpenCV version capable of decoding h264/h.265 rtsp streams.  If you have cameras capable of delivering "full resolution" Onvif snapshots, are using USB webcams, mjpeg stream cameras (or motioneyOS), or the PiCamera module the h.264/h.265 decoding issue is moot.
 
-
-# Notes from a "virgin" setup of Raspbian Buster Pi3/4, 22JAN2020
+#
+## Notes from a "virgin" setup of Raspbian Buster Pi3/4, 22JAN2020
 
 Install your OS using the normal instructions.  I'll use a Pi3B+ and Raspbian "Buster" desktop (2019-09-26-raspbian-buster-full.zip) for this example.  IMHO SD cards are cheap, so buy a big enough one to have a "real" system for testing and development, YMMV.  With Buster the same card can be used in a Pi3 or Pi4.
 
