@@ -273,6 +273,7 @@ If you learn by watching videos this is a good place to start:  https://www.yout
        when decoded with OpenCV that make the log files large and mostly useless.
 - AI_dev.py still supports using the original NCS version 1 SDK.  If you have it installed, setting up OpenVINO doesn't break anything.
   But I don't think you should bother with it, if you haven't already installed it.
+- Seems Windows 10 support has recently been added for the Coral TPU, its been in OpenVINO from when I got started with it.  I'm not able to support Windows, but AI_OVmt.py has an initial pass at Windows support via some conditional code.  I'll assist with porting to Windows but I do not have a system to test it on.  Python, OpenCV, and Node-RED are all available on Windows so it should be possible.  If you try and succeed, please document your steps so we can add it to the Wiki.  
        
 # 
 ## Some performance test results:
