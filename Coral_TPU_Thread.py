@@ -73,6 +73,8 @@ def AI_thread(results, inframe, modelStr, labels, tnum, cameraLock, nextCamera, 
                 endY = int(endY * Y_MULTIPLIER)
                 xlen=endX-startX
                 ylen=endY-startY
+                if float(xlen*ylen)/(w*h) > blobThreshold:     # detection filling too much of the frame is bogus
+                   continue
                 xcen=int((startX+endX)/2)
                 ycen=int((startY+endY)/2)
                 boxPoints=(startX,startY, endX,endY, xcen,ycen, xlen,ylen)

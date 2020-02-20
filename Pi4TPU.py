@@ -67,6 +67,7 @@ if True:
     ap.add_argument("-c", "--confidence", type=float, default=0.70, help="detection confidence threshold")
     ap.add_argument("-vc", "--verifyConfidence", type=float, default=0.80, help="detection confidence for verification")
     ap.add_argument("-nvc", "--noVerifyConfidence", type=float, default=.98, help="initial detection confidence to skip verification")
+    ap.add_argument("-blob", "--blobFilter", type=float, default=.20, help="reject detections that are more than this fraction of the frame")
     ap.add_argument("-dbg", "--debug", action="store_true", help="display images to debug detection verification thresholds")
     
     # specify text file with list of URLs for camera rtsp streams
@@ -330,12 +331,14 @@ def main():
     global sysIDstr
     global dbg
     global CamName
+    global blobThreshold    
        
 
     # set variables from command line auguments or defaults
     confidence = args["confidence"]
     verifyConf = args["verifyConfidence"]
     noVerifyNeeded = args["noVerifyConfidence"]
+    blobThreshold = args["blobFilter"]
     dbg=args["debug"]
     MQTTcameraServer = args["mqttCameraBroker"]
     Nmqtt = args["NmqttCams"]
@@ -723,6 +726,7 @@ def TPU_thread(results, inframe, model, labels, Ncameras, PREPROCESS_DIMS, confi
     global QUIT
     global sysIDstr
     global dbg
+    global blobThreshold    # so far, MobileNet-SSDv2 hasn't needed the blob filter.
     waits=0
     drops=0
     fcnt=0
@@ -769,6 +773,8 @@ def TPU_thread(results, inframe, model, labels, Ncameras, PREPROCESS_DIMS, confi
                 boxPoints=(startX,startY, endX,endY)
                 xlen=endX-startX
                 ylen=endY-startY
+                if float(xlen*ylen)/(w*h) > blobThreshold:     # detection filling too much of the frame is bogus
+                   continue
                 xcen=int((startX+endX)/2)
                 ycen=int((startY+endY)/2)
                 boxPoints=(startX,startY, endX,endY, xcen,ycen, xlen,ylen)
