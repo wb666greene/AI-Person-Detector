@@ -120,7 +120,7 @@
         "type": "function",
         "z": "5976337f.eb428c",
         "name": "Location & Notification Filter",
-        "func": "var Idle = context.get('Idle')||0;\nvar Audio = context.get('Audio')||0;\nvar Notify = context.get('Notify')||0;\n\nif (msg.topic === \"Alarm/MODE\"){\n    if(msg.payload.includes(\"Idle\")){\n        context.set('Idle',1);    \n        context.set('Audio',0);\n        context.set('Notify',0);\n    }else if(msg.payload.includes(\"Audio\")){\n        context.set('Idle',0);\n        context.set('Audio',1);\n        context.set('Notify',0);\n    }else if(msg.payload.includes(\"Notify\")){\n        context.set('Idle',0);\n        context.set('Audio',0);\n        context.set('Notify',1);\n    }\n    return [ msg, null, null, null ];     // change null to msg for debugging.\n}\n\n\n/* AI \"in alert region\" filter.\n Install point-in-polygon with:\n    cd ~/.node-red\n    npm install point-in-polygon\n var inside = require('point-in-polygon'); // doesn't work in node-red.\n So must edit .node-red/settings.js and add:\n      functionGlobalContext: {\n          insidePolygon:require('point-in-polygon')\n      }\n Requires a node-red restart when finished.\n*/\n\nvar inside = global.get('insidePolygon');\n\nmsg.InAlertRegion=true;   // default is to accept detection anywhere in image\n\nvar poly=[[]];\n\n/* SAMPLE. \n   you'll need to edit this to match your camera \n   names and region polygons\n*/\n// polygon points picked from image using GIMP\n//var Cam0Poly = [ [600,1400], [2200,700], [3841,500], [3841,1500], [2200, 2161], [1400,2161] ];\nvar Cam0Poly =[ [] ];\nvar Cam1Poly =[ [] ];\nvar Cam2Poly =[ [] ];\nvar Cam3Poly =[ [] ];\nvar Cam4Poly =[ [] ];\nvar Cam5Poly =[ [] ];\nvar Cam6Poly =[ [] ];\nvar Cam7Poly =[ [] ];\n\nif(msg.filename.includes(\"Cam0\"))\n    poly=Cam0Poly;\nelse if(msg.filename.includes(\"Cam1\"))\n    poly=Cam1Poly;\nelse if(msg.filename.includes(\"Cam2\"))\n    poly=Cam2Poly;\nelse if(msg.filename.includes(\"Cam3\"))\n    poly=Cam3Poly;\nelse if(msg.filename.includes(\"Cam4\"))\n    poly=Cam4Poly;\nelse if(msg.filename.includes(\"Cam5\"))\n    poly=Cam5Poly;\nelse if(msg.filename.includes(\"Cam6\"))\n    poly=Cam6Poly;\nelse if(msg.filename.includes(\"Cam7\"))\n    poly=Cam7Poly;\n    \nif(poly.length > 2)\n    msg.InAlertRegion = inside([msg.endX, msg.endY], poly);\n\n\nif (msg.topic.includes(\"AIdetection\")){\n    if (Idle == 1 || msg.InAlertRegion === false){\n        return [ null, null, null ];\n    }\n    if (Audio == 1){\n        return [ null, msg, null ];\n    }\n    if (Notify == 1){\n        return [ null, msg, msg ];\n    }\n}\n\nreturn [ null, null, null ];",
+        "func": "var Idle = context.get('Idle')||0;\nvar Audio = context.get('Audio')||0;\nvar Notify = context.get('Notify')||0;\n\nif (msg.topic === \"Alarm/MODE\"){\n    if(msg.payload.includes(\"Idle\")){\n        context.set('Idle',1);    \n        context.set('Audio',0);\n        context.set('Notify',0);\n    }else if(msg.payload.includes(\"Audio\")){\n        context.set('Idle',0);\n        context.set('Audio',1);\n        context.set('Notify',0);\n    }else if(msg.payload.includes(\"Notify\")){\n        context.set('Idle',0);\n        context.set('Audio',0);\n        context.set('Notify',1);\n    }\n    return [ msg, null, null, null ];     // change null to msg for debugging.\n}\n\n\n/* AI \"in alert region\" filter.\n Install point-in-polygon with:\n    cd ~/.node-red\n    npm install point-in-polygon\n var inside = require('point-in-polygon'); // doesn't work in node-red.\n So must edit .node-red/settings.js and add:\n      functionGlobalContext: {\n          insidePolygon:require('point-in-polygon')\n      }\n Requires a node-red restart when finished.\n*/\n\nvar inside = global.get('insidePolygon');\n\nmsg.InAlertRegion=true;   // default is to accept detection anywhere in image\n\nvar poly=[[]];\n\n/* SAMPLE. \n   you'll need to edit this to match your camera \n   names and region polygons\n*/\nif(msg.filename.includes(\"Cam0\"))\n// polygon points picked from image using GIMP\n//var Cam0Poly = [ [600,1400], [2200,700], [3841,500], [3841,1500], [2200, 2161], [1400,2161] ];\n    poly=[ [] ];\nelse if(msg.filename.includes(\"Cam1\"))\n    poly=[ [] ];\nelse if(msg.filename.includes(\"Cam2\"))\n    poly=[ [] ];\nelse if(msg.filename.includes(\"Cam3\"))\n    poly=[ [] ];\nelse if(msg.filename.includes(\"Cam4\"))\n    poly=[ [] ];\nelse if(msg.filename.includes(\"Cam5\"))\n    poly=[ [] ];\nelse if(msg.filename.includes(\"Cam6\"))\n    poly=[ [] ];\nelse if(msg.filename.includes(\"Cam7\"))\n    poly=[ [] ];\n    \nif(poly.length > 2)\n    msg.InAlertRegion = inside([msg.endX, msg.endY], poly);\n\n\n// filter for box points matching bogus detection of static object\n// var bogus=[[ ULx.ULy, LRx,LRy, tol ]];\nvar bogus= [ [] ];  // empty 2D array is 1 by 0\n\n// UL,LR of reject object obtained from bogus AI detection image overlay text\n// CamBogus = [ [ startX,startY, endX,endY, tolerence] ]; // multiple bogus detections can be in a frame, so 2D array, N by 5.\nif(msg.filename.includes(\"Cam0\"))\n    //bogus=[ [1337,658, 1414,756, 0.5] ];    // pool plumbing pipes\n    bogus=[ [] ];\nelse if(msg.filename.includes(\"Cam1\"))\n    bogus=bogus=[ [] ];\nelse if(msg.filename.includes(\"Cam2\"))\n    bogus=bogus=[ [] ];\nelse if(msg.filename.includes(\"Cam3\"))\n    bogus=bogus=[ [] ];\nelse if(msg.filename.includes(\"Cam4\"))\n    bogus=bogus=[ [] ];\nelse if(msg.filename.includes(\"Cam5\"))\n    bogus=bogus=[ [] ];\nelse if(msg.filename.includes(\"Cam6\"))\n    bogus=bogus=[ [] ];\nelse if(msg.filename.includes(\"Cam7\"))\n    bogus=bogus=[ [] ];\n    \nif(bogus[0].length == 5){\n    for (var i=0; i<bogus.length; i++){\n        xtol=(bogus[i][2]-bogus[i][0])*bogus[i][4];\n        if(Math.abs(msg.startX-bogus[i][0])>xtol){continue}\n        if(Math.abs(msg.endX-bogus[i][2])>xtol){continue}\n        ytol=(bogus[i][3]-bogus[i][1])*bogus[i][4];\n        if(Math.abs(msg.startY-bogus[i][1])>xtol){continue}\n        if(Math.abs(msg.endY-bogus[i][3])>xtol){continue}\n        msg.InAlertRegion=false;\n    }\n}\n\n\nif(msg.InAlertRegion === true)\n    msg.filename=msg.filename.replace(\"AI\", \"AI.alert\"); // for QA/QC want to know what would trigger alerts.\n\nif (msg.topic.includes(\"AIdetection\")){\n    if (Idle == 1 || msg.InAlertRegion === false){\n        return [ null, null, null ];\n    }\n    if (Audio == 1){\n        return [ null, msg, null ];\n    }\n    if (Notify == 1){\n        return [ null, msg, msg ];\n    }\n}\n\nreturn [ null, null, null ];",
         "outputs": 3,
         "noerr": 0,
         "x": 415,
@@ -1884,11 +1884,37 @@
         "payload": "",
         "payloadType": "date",
         "topic": "",
-        "x": 180,
-        "y": 1030,
+        "x": 160,
+        "y": 1040,
         "wires": [
             [
                 "f4b15cec.910ab"
+            ]
+        ]
+    },
+    {
+        "id": "1a8defab.21a4f",
+        "type": "ui_button",
+        "z": "5976337f.eb428c",
+        "name": "StopAI",
+        "group": "e7c41c6a.51658",
+        "order": 1,
+        "width": "3",
+        "height": "1",
+        "passthru": false,
+        "label": "Stop AI",
+        "tooltip": "Launch the Python AI code",
+        "color": "",
+        "bgcolor": "#d02020",
+        "icon": "",
+        "payload": "",
+        "payloadType": "date",
+        "topic": "",
+        "x": 235,
+        "y": 1120,
+        "wires": [
+            [
+                "18939346.bd832d"
             ]
         ]
     },
