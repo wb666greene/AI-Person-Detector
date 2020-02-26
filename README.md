@@ -1,6 +1,7 @@
 This is the next step in the evolution of: https://github.com/wb666greene/AI_enhanced_video_security
-For some examples of this AI in real-world action checkout the wiki:
+For some sample images of this AI in real-world action checkout the wiki:
 https://github.com/wb666greene/AI-Person-Detector/wiki/Camera-notes
+You can see the system in live action at: https://youtu.be/nUatA9-DWGY
 
 The major upgrade is using the Coral TPU and MobilenetSSD-v2_coco for the AI.  The Movidius NCS/NCS2 are still supported, but the *.bin and *.xml files for the MobilenetSSD-v2_coco model are too large to upload to GitHub.
 
