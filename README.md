@@ -7,6 +7,9 @@ The major upgrade is using the Coral TPU and MobilenetSSD-v2_coco for the AI.  T
 
 The Ai is pure Python3 code and should work on any system that can run a python3 version supported by Google Coral TPU or Intel OpenVINO installers with an OpenCV version capable of decoding h264/h.265 rtsp streams.  If you have cameras capable of delivering "full resolution" Onvif snapshots, are using USB webcams, mjpeg stream cameras (or motioneyOS), or the PiCamera module the h.264/h.265 decoding issue is moot.
 
+## New! Windows 10 Support for Coral TPU
+Openvino has supported Windows 10 for a long time but for this application the Movidius NCS/NCS2 is far inferiour to the TPU.  With the Google support for the TPU on Windows 10 check out the updated TPU.py and the Wiki instructions: https://github.com/wb666greene/AI-Person-Detector/wiki/NEW!-Windows-10-support-for-TPU
+
 #
 ## Notes from a "virgin" setup of Raspbian Buster Pi3/4, 22JAN2020
 
