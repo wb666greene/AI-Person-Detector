@@ -2,6 +2,10 @@
 #
 # TPU.py 26JUL2019wbk
 #
+## 28JUN2020wbk  since Google now supports TPU on Windows10, attempt to run it there.
+## 2JUL2020wbk  seems to work OK but there are issues with the node-red UI controller to start, stop, other housekeeping, etc.
+#
+#
 ### 9AUG2019wbk  make MQTTcam act like Onvif snapshot by publishing in response to sendOne/N message
 ### requires rtsp2mqttPdemand.py server  Still getting ~50fps from i5ai for Nmqtt 15
 ### IOT class machines -camList 1 2 3 5 6 14 -camMQTT i5ai 
@@ -34,20 +38,44 @@
 # 5DEC2019wbk some Pi4B tests with rtsp cameras, 3fps per stream:
 # 4 UHD (4K)  :     ~2.8 fps
 # 4 HD (1080p):     ~11.8 fps (basically processing every frame)
-# 2 UHD 2 HD  :     ~6.7 fps (Pi4B struggles with 4K streams)
+# 2 UHD, 2 HD :     ~6.7 fps (Pi4B struggles with 4K streams)
 # 5 HD        :     ~14.7 fps (basically processing every frame) 
 # 6 HD        :     ~15.0 fps, -d 0 (no display) ~16.7 fps
 #
 ## 6DEC2019wbk Some UHD tests on Jetson Nano
-# 5 UHD (4K)         :  ~14.6 fps (effectively processing every frame!)
-# 5 UHD 3 HD         :  ~10.3 fps, jumps to ~19.1 fps if -d 0 option used (no live image display)
-# 4 UHD 4 HD         :  ~16.3 fps, ~22.5 fps with -d 0 option
-# 5 UHD 10 HD (1080p):  ~4.4 fps, ~7.6 fps with -d 0 option (totally overloaded, get ~39 fps with running on i7-4500U MiniPC)
+# 5 UHD (4K)          :  ~14.6 fps (effectively processing every frame!)
+# 5 UHD 3 HD          :  ~10.3 fps, jumps to ~19.1 fps if -d 0 option used (no live image display)
+# 4 UHD 4 HD          :  ~16.3 fps, ~22.5 fps with -d 0 option
+# 5 UHD, 10 HD (1080p):  ~4.4 fps, ~7.6 fps with -d 0 option (totally overloaded, get ~39 fps with running on i7-4500U MiniPC)
+#
+## 3JUL2020wbk Some tests with Windows10 on i3-4025U
+# 5 Onvif 720p cams      :  ~32.9 fps, probably limited by the rate Onvif snapshots can be had by HTTP requests.
+# 4 RTSP HD (1080p)      :  ~11.8 fps, rtsp streams from the DVR are set for 3 fps each.
+# 4 RTSP UHD (4K)        :  ~12.4 fps, rtsp streams from 4K DVR are set for 3 fps each.
+# 5 Onvif, 4 HD (1080p)  :  ~28.1 fps.
+# 4 HD and 4 UHD         :  ~15.7 fps.
+# 8 HD rtsp streams      :  ~23.9 fps, basicaly every frame much better with HD than UHD streams.
 
 
 # import the necessary packages
+import platform
+global __WIN__
+if platform.system()[:3] != 'Lin':
+    __WIN__ = True
+else:
+    __WIN__ = False
+
+
+# Get python major version for
 import sys
-import signal
+if sys.version_info.major < 3:
+    print("Python version 3 is required.  Exiting ...")
+    quit()
+    
+
+# import the necessary packages
+if __WIN__ == False:
+    import signal
 from imutils.video import FPS
 import argparse
 import numpy as np
@@ -108,34 +136,39 @@ print('Edgetpu_api version: ' + edgetpu_version)
 #**********************************************************************************************************************
 
 # Boilerplate code to setup signal handler for graceful shutdown on Linux
-def sigint_handler(signal, frame):
+if __WIN__ is False:
+    def sigint_handler(signal, frame):
         global QUIT
         currentDT = datetime.datetime.now()
-        #print('caught SIGINT, normal exit. -- ' + currentDT.strftime("%Y-%m-%d  %H:%M:%S"))
+        print('caught SIGINT, normal exit. -- ' + currentDT.strftime("%Y-%m-%d  %H:%M:%S"))
+        #quitQ.put(True)
         QUIT=True
 
-def sighup_handler(signal, frame):
+    def sighup_handler(signal, frame):
         global QUIT
         currentDT = datetime.datetime.now()
         print('caught SIGHUP! ** ' + currentDT.strftime("%Y-%m-%d  %H:%M:%S"))
+        #quitQ.put(True)
         QUIT=True
 
-def sigquit_handler(signal, frame):
+    def sigquit_handler(signal, frame):
         global QUIT
         currentDT = datetime.datetime.now()
         print('caught SIGQUIT! *** ' + currentDT.strftime("%Y-%m-%d  %H:%M:%S"))
+        #quitQ.put(True)
         QUIT=True
 
-def sigterm_handler(signal, frame):
+    def sigterm_handler(signal, frame):
         global QUIT
         currentDT = datetime.datetime.now()
         print('caught SIGTERM! **** ' + currentDT.strftime("%Y-%m-%d  %H:%M:%S"))
+        #quitQ.put(True)
         QUIT=True
 
-signal.signal(signal.SIGINT, sigint_handler)
-signal.signal(signal.SIGHUP, sighup_handler)
-signal.signal(signal.SIGQUIT, sigquit_handler)
-signal.signal(signal.SIGTERM, sigterm_handler)
+    signal.signal(signal.SIGINT, sigint_handler)
+    signal.signal(signal.SIGHUP, sighup_handler)
+    signal.signal(signal.SIGQUIT, sigquit_handler)
+    signal.signal(signal.SIGTERM, sigterm_handler)
 
 
 
@@ -216,10 +249,11 @@ def on_mqttCam(client, camList, msg):
         # put input image into the camera's inframe queue
         try:
             mqttFrames[camN]+=1
+            imageDT=datetime.datetime.now()
             # thanks to @krambriw on the node-red user forum for clarifying this for me
             npimg=np.frombuffer(msg.payload, np.uint8)      # convert msg.payload to numpy array
             frame = cv2.imdecode(npimg, cv2.IMREAD_COLOR)   # decode image file into openCV image
-            inframe[camN+mqttCamOffset].put((frame, camN+mqttCamOffset), False) 
+            inframe[camN+mqttCamOffset].put((frame, camN+mqttCamOffset, imageDT), False)
         except:
             mqttFrameDrops[camN]+=1
         try:
@@ -253,7 +287,7 @@ def TPU_thread(results, inframe, model, labels, tnum, Ncameras, PREPROCESS_DIMS,
         nextCamera = (nextCamera+1)%Ncameras
         # get a frame
         try:
-            (image, cam) = inframe[cq].get(True,0.100)
+            (image, cam, imageDT) = inframe[cq].get(True,0.100)
         except:
             image = None
             waits+=1
@@ -272,7 +306,7 @@ def TPU_thread(results, inframe, model, labels, tnum, Ncameras, PREPROCESS_DIMS,
             detection = model.detect_with_image(frame, threshold=confidence, keep_aspect_ratio=True, relative_coord=False)
         cfps.update()    # update the FPS counter
         fcnt+=1
-        imageDT = datetime.datetime.now()
+##        imageDT = datetime.datetime.now()
         # loop over the detection results
         boxPoints=(0,0, 0,0, 0,0, 0,0)  # startX, startY, endX, endY, Xcenter, Ycenter, Xlength, Ylength
         for r in detection:
@@ -522,7 +556,10 @@ def main():
     # *** setup path to save AI detection images
     if savePath == "":
         detectPath= os.getcwd()
-        detectPath=detectPath + "/detect"
+        if __WIN__ is False:
+            detectPath=detectPath + "/detect"
+        else:
+            detectPath=detectPath + "\\detect"
         if os.path.exists(detectPath) == False and localSave:
             os.mkdir(detectPath)
     else:
@@ -713,13 +750,23 @@ def main():
                 filename=dt.strftime("%H_%M_%S.%f")
                 filename=filename[:-5]+"_"+ai  #just keep tenths, append AI source
                 if localSave:
-                    lfolder=str(detectPath + "/" + folder)
+                    if __WIN__ is False:
+                        lfolder=str(detectPath + "/" + folder)
+                    else:
+                        lfolder=str(detectPath + "\\" + folder)
                     if os.path.exists(lfolder) == False:
                         os.mkdir(lfolder)
-                    if personDetected:
-                        outName=str(lfolder + "/" + filename + "_" + "Cam" + str(cami) +"_AI.jpg")
-                    else:   # in case saveAll option
-                        outName=str(lfolder + "/" + filename + "_" + "Cam" + str(cami) +".jpg")
+                    if __WIN__ is False:
+                        if personDetected:
+                            outName=str(lfolder + "/" + filename + "_" + "Cam" + str(cami) +"_AI.jpg")
+                        else:   # in case saveAll option
+                            outName=str(lfolder + "/" + filename + "_" + "Cam" + str(cami) +".jpg")
+                    else:
+                        if personDetected:
+                            outName=str(lfolder + "\\" + filename + "_" + "Cam" + str(cami) +"_AI.jpg")
+                        else:   # in case saveAll option
+                            outName=str(lfolder + "\\" + filename + "_" + "Cam" + str(cami) +".jpg")
+
                     if (personDetected and not AlarmMode.count("Idle")) or saveAll:  # save detected image
                         cv2.imwrite(outName, img, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
                 if personDetected:
@@ -877,7 +924,8 @@ def onvif_thread(inframe, camn, URL):
             time.sleep(5.0)     # let other threads have more time while this camera recovers, which sometimes takes minutes
         try:
             if frame is not None:
-                inframe.put((frame, camn), True, 0.200)
+                imageDT=datetime.datetime.now()
+                inframe.put((frame, camn, imageDT), True, 0.200)
                 ##time.sleep(sleepyTime)   # force thread switch, hopefully smoother sampling, 10Hz seems upper limit for snapshots
         except: # most likely queue is full
             ocnt=ocnt+1
@@ -945,10 +993,11 @@ def rtsp_thread(inframe, camn, URL):
             time.sleep(10.0)
         try:
             if frame is not None:
+                imageDT=datetime.datetime.now()
                 if inframe.full():
-                    [_,_]=inframe.get(False)    # remove oldest sample to make space in queue
+                    [_,_,_]=inframe.get(False)    # remove oldest sample to make space in queue
                     ocnt+=1     # if happens here shouldn't happen below     
-                inframe.put((frame, camn), False)   # no block if queue full, go grab fresher frame
+                inframe.put((frame, camn, imageDT), False)   # no block if queue full, go grab fresher frame
         except: # most likely queue is full
             ocnt+=1          
     # a large drop count for rtsp streams is not a bad thing as we are trying to keep the input buffers nearly empty to reduce latency.
