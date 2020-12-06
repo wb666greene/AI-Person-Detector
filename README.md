@@ -122,6 +122,10 @@ And my model optimizer command (you need to chage the /home/wally for your syste
    **At this point you now have a nice version of OpenCV with some extra OpenVINO support functions installed,
    EXCEPT the OpenCV 4.1.2-openvino has issues with mp4 (h.264/h.265) decoding, which breaks using rtsp streams!
    The Pi3B+ is not very usable with rtsp streams and the eariler OpenVINO versions that do work don't support the Pi4.**
+   
+   **Update 6DEC20: The apt installation of OpenVINO release 2020.3 tested with Ubuntu-Mate 16.04 on an Atomic Pi (Atom Z8550) 
+   the h.264/h.265 decoding issue seems solved, its OpenCV version 4.3.0-openvino-2020.3
+   Also note that R2020.3 is the last release that supports the original NCS, R2020.4 and beyond only support the NCS2**
 
 # 
 #### Setup the Coral TPU: https://coral.ai/docs/accelerator/get-started/
