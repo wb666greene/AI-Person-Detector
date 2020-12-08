@@ -5,10 +5,21 @@ You can see the system in live action at: https://youtu.be/nUatA9-DWGY
 
 The major upgrade is using the Coral TPU and MobilenetSSD-v2_coco for the AI.  The Movidius NCS/NCS2 are still supported, but the *.bin and *.xml files for the MobilenetSSD-v2_coco model are too large to upload to GitHub.
 
-The Ai is pure Python3 code and should work on any system that can run a python3 version supported by Google Coral TPU or Intel OpenVINO installers with an OpenCV version capable of decoding h264/h.265 rtsp streams.  If you have cameras capable of delivering "full resolution" Onvif snapshots, are using USB webcams, mjpeg stream cameras (or motioneyOS), or the PiCamera module the h.264/h.265 decoding issue is moot.
+The Ai is pure Python3 code and should work on any system that can run a python3 version supported by Google Coral TPU or Intel OpenVINO installers with an OpenCV version capable of decoding h264/h.265 rtsp streams.  If you have cameras capable of delivering "full resolution" Onvif snapshots, are using USB webcams, mjpeg stream cameras (motion or motioneyeOS), or the PiCamera module, then the h.264/h.265 decoding issue is moot.  
 
-## New! Windows 10 Support for Coral TPU
+Edit: 8Dec20 OpenVINO R2020.3 seems to have fixed the h.264/h.265 decoding issue, this is the last OpenVINO version to support the original Movidius NCS.  OpenVINO R2021.1 now suppots Ubuntu 20.04, but drops support for Ubuntu 16.04, it also breaks loading of the bin and xml files I've made for the MobilenetSSD-v2_coco model.  The TPU performance is so much better than the NCS/NCS2 in this application that I'm not moving beyond OpenVINO R2020.3 anytime soon.
+
+## New! Support for virtual PTZ using "fisheye" cameras.
+See fisheyeTPU.py or fisheyeNCS.py, the NCS version supports multiple NCS sticks.  Build the fisheye_window.cpp to create the virtual PTZ views.  The build shell script uses the OpenCV version installed with OpenVINO R2020.3, explaining how to compile OpenCV applications is beyond my pay grade, StackExchange will become your new best friend.
+
+The virtual PTZ code is derived from here: https://github.com/daisukelab/fisheye_window You can see a short video I made flying around a still image from a fisheye camera to set the virtual PTX views: https://www.youtube.com/watch?v=UJJPmdTFQfo
+
+Unfortunately building the "maps" for the virtual PTZ view is terribly slow in Python, but they only need to be built once on start-up.  With an AtomicPi fisheyeNCS.py and two NCS sticks gets ~11.1 fps for 4 virtual PTZ views from two rtsp fisheye cameras (2 virtual views per camera), a single NCS2 stick gets ~11.5 fps.  Using fisheyeTPU.py with 8 virtual PTZ views from the same pair of fisheye cameras gets ~27.5 fps.  My next planned update is to save the maps to a file and then load them from disk on startup.
+
+## Windows 10 Support for Coral TPU
 Openvino has supported Windows 10 for a long time but for this application the Movidius NCS/NCS2 is far inferiour to the TPU.  With the Google support for the TPU on Windows 10 check out the updated TPU.py and the Wiki instructions: https://github.com/wb666greene/AI-Person-Detector/wiki/NEW!-Windows-10-support-for-TPU
+
+The fisheyeTPU.py code has been tested on Windows 10, and I've managed to compile fisheye_window.cpp on Windows 10 using the "free" Visual Studio 19 to set the virtual PTZ views.  Again explaining how to set up and use Visual Studio is way above my pay grade.  Open an issue if you are interested, and I'll send my vc "solution" project files.  But I have no idea if they would work for you.
 
 #
 ## Notes from a "virgin" setup of Raspbian Buster Pi3/4, 22JAN2020
@@ -315,3 +326,14 @@ If you learn by watching videos this is a good place to start:  https://www.yout
            - 5 UHD 3 HD         :  ~10.3 fps, jumps to ~19.1 fps if -d 0 option used (no live image display)
            - 4 UHD 4 HD         :  ~16.3 fps, ~22.5 fps with -d 0 option
            - 5 UHD 10 HD (1080p):  ~4.4 fps, ~7.6 fps with -d 0 option (totally overloaded, get ~39 fps when running on i7-4500U MiniPC)
+
+- **AtomicPi running Ubuntu-Mate 16.04.**
+   -    - AI_dev.py -nNCS 1:
+            - 4 HD (1080p)      :  ~5.5 fps
+	    - 1 UHD (4K) 1 HD   :  ~5.3 fps
+	    - 4 HD with NCS2    :  ~11.7 fps
+	    - 6 HD with NCS2    :  ~11.0 fps
+   -    - AI_dev.py -nNCS 2
+            - 6 HD with 2 NCS   :  ~10.5 fps
+   -    - TPU.py
+            - 6 HD (1080p)      :  ~25.2 fps
