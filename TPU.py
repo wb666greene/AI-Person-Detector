@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 #
-# TPU.py 26JUL2019wbk
+# TPU.py 26JUL2019wbk, TPU_0.py with alarmMode appended to the filenames
 #
 ## 28JUN2020wbk  since Google now supports TPU on Windows10, attempt to run it there.
 ## 2JUL2020wbk  seems to work OK but there are issues with the node-red UI controller to start, stop, other housekeeping, etc.
@@ -32,6 +32,9 @@
 # Reorginize main loop to avoid imwrite() and imencode() if results are not going to be used.  Worthwhile on weak IOT hardware.
 #   Performance test on i7-6700K Desktop: ./TPU.py -Nmqtt 15 -camMQTT i5ai -d 1 -> ~42.8 fps
 # Note that ~45 fps is processing every frame from all 15 Lorex DVR rtsp streams.
+# NOTE: the above performace tests are with 1080p HD camera streams.  The rtsp2mqtt.py "server" and "mqtt cams" looked like a
+# good solution.  Unfortunately it didn't scale well at all when I upgraded to 4K UHD cameras
+#
 #
 # 17OCT2019wbk -- Add syncronized wait to rtsp thread startup.
 ##
@@ -748,7 +751,8 @@ def main():
                 # setup for file saving
                 folder=dt.strftime("%Y-%m-%d")
                 filename=dt.strftime("%H_%M_%S.%f")
-                filename=filename[:-5]+"_"+ai  #just keep tenths, append AI source
+#                filename=filename[:-5]+"_"+ai  #just keep tenths, append AI source
+                filename=filename[:-5]  	#just keep tenths, AtomicPi always uses TPU
                 if localSave:
                     if __WIN__ is False:
                         lfolder=str(detectPath + "/" + folder)
@@ -758,21 +762,21 @@ def main():
                         os.mkdir(lfolder)
                     if __WIN__ is False:
                         if personDetected:
-                            outName=str(lfolder + "/" + filename + "_" + "Cam" + str(cami) +"_AI.jpg")
+                            outName=str(lfolder + "/" + filename + "_" + "Cam" + str(cami) + "_" + AlarmMode  +"_AI.jpg")
                         else:   # in case saveAll option
-                            outName=str(lfolder + "/" + filename + "_" + "Cam" + str(cami) +".jpg")
+                            outName=str(lfolder + "/" + filename + "_" + "Cam" + str(cami) + "_" + AlarmMode  +".jpg")
                     else:
                         if personDetected:
-                            outName=str(lfolder + "\\" + filename + "_" + "Cam" + str(cami) +"_AI.jpg")
+                            outName=str(lfolder + "\\" + filename + "_" + "Cam" + str(cami) + "_" + AlarmMode  +"_AI.jpg")
                         else:   # in case saveAll option
-                            outName=str(lfolder + "\\" + filename + "_" + "Cam" + str(cami) +".jpg")
+                            outName=str(lfolder + "\\" + filename + "_" + "Cam" + str(cami) + "_" + AlarmMode  +".jpg")
 
                     if (personDetected and not AlarmMode.count("Idle")) or saveAll:  # save detected image
                         cv2.imwrite(outName, img, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
                 if personDetected:
                     retv, img_as_jpg = cv2.imencode('.jpg', img, [int(cv2.IMWRITE_JPEG_QUALITY), 50])
                     if retv:
-                        outName=str("AIdetection/!detect/" + folder + "/" + filename + "_" + "Cam" + str(cami) +".jpg")
+                        outName=str("AIdetection/!detect/" + folder + "/" + filename + "_" + "Cam" + str(cami) + "_" + AlarmMode  +"_AI.jpg")
                         outName=outName + "!" + str(bp[0]) + "!" + str(bp[1]) + "!" + str(bp[2]) + "!" + str(bp[3]) + "!" + str(bp[4]) + "!" + str(bp[5]) + "!" + str(bp[6]) + "!" + str(bp[7])
                         client.publish(str(outName), bytearray(img_as_jpg), 0, False)
 ##                        print(outName)  # log detections
@@ -912,16 +916,17 @@ def onvif_thread(inframe, camn, URL):
                 currentDT = datetime.datetime.now()
                 print('[******] Onvif cam'+ str(camn) + ' error has recovered: ' + URL[0:33] + ' --- ' + currentDT.strftime(" %Y-%m-%d %H:%M:%S"))
                 Error=False    # after getting a good frame, enable logging of next error
-        except Exception as e:
+        except: # Exception as e:
             # this appears to fix the Besder camera problem where it drops out for minutes every 5-12 hours
             if not Error:   # suppress the zillions of sequential error messages while it recovers
                 currentDT = datetime.datetime.now()
                 ## printing the error string hasn't been particularly informative
                 ##print('Onvif cam'+ str(camn) + ': ' + str(e) + URL[0:30] + ' --- ' + currentDT.strftime(" %Y-%m-%d %H:%M:%S"))
-                print('[Error!] Onvif cam'+ str(camn) + ': ' +  URL[0:33] + ' --- ' + currentDT.strftime(" %Y-%m-%d %H:%M:%S"))
+                print('[Error!] Onvif Cam'+ str(camn) + ': ' +  URL[0:33] + ' --- ' + currentDT.strftime(" %Y-%m-%d %H:%M:%S"))
             frame = None
             Error=True
             time.sleep(5.0)     # let other threads have more time while this camera recovers, which sometimes takes minutes
+            continue
         try:
             if frame is not None:
                 imageDT=datetime.datetime.now()
@@ -970,6 +975,7 @@ def rtsp_thread(inframe, camn, URL):
                 # try closing the stream and reopeing it, I have one straight from China that does this error regularly
                 Rcap.release()
                 time.sleep(5.0)                   
+                QUIT=True
                 Rcap=cv2.VideoCapture(URL)
                 Rcap.set(cv2.CAP_PROP_BUFFERSIZE, 2)
                 if not Rcap.isOpened():
