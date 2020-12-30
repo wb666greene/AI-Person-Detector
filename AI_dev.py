@@ -47,7 +47,7 @@
 #   Return box points for detection on results queue, requires changes to all AI thread functions.
 #   Abuse MQTT broker by sending filename and box points as message topic for the jpeg image buffer.
 #   Make local save of detections be a command line option, default to False, but for IOT systems having remote MQTT broker system
-# running node-red save the detections and do notifications is the prefered way, although its also possible to run the broker and 
+# running node-red save the detections and do notifications is the prefered way, although its also possible to run the broker and
 # node-red on the AI host.
 ##
 # 23AUG2019wbk
@@ -60,7 +60,7 @@
 #
 # 17OCT2019wbk  rtsp2mqttTdemand.py all on i7-6700K desktop
 # ./AI_dev.py -nNCS 0 -nt 1 -d 2 -Nmqtt 15 --> ~36.5 fps
-# ./AI_dev.py -nNCS 0 -nt 0 -nTPU 1 -d 2 -Nmqtt 15 --> ~52.9 fps (obviously processig duplicate some frames)
+# ./AI_dev.py -nNCS 0 -nt 0 -nTPU 1 -d 2 -Nmqtt 15 --> ~52.9 fps (obviously processing some duplicate frames)
 ##
 ##
 # 16SEP2019wbk
@@ -77,17 +77,20 @@
 #   6 4K and 2 1080p                                       :  ~18.7 fps
 #   6 4K                                                   :  ~16.8 fps (6 4K streams seems to be a tad too much), repeat ~16.9 fps.
 #
-# Jetson Nano, -camList 0 1 2 3 -camMQTT i5ai.local -nTPU 1 -d 0 -mqtt kahuna.local 2>/dev/null, 
+# Jetson Nano, -camList 0 1 2 3 -camMQTT i5ai.local -nTPU 1 -d 0 -mqtt kahuna.local 2>/dev/null,
 #   cams 0 & 1 are 4K: ~8.8 fps, some inefficiencey in MQTTcam code with remote decoding.  Network issues?
 #
-#   ./rtsp2mqttPdemand.py  -rtsp 5UHD.rtsp 2./dev/null   (on Jetson Nano)
+#   ./rtsp2mqttPdemand.py  -rtsp 5UHD.rtsp 2>/dev/null   (on Jetson Nano)
 #   ./AI_dev.py -nTPU 1 -d 0 -Nmqtt 5 -mqtt kahuna.local -camMQTT localhost
 #   5 4K cameras    : ~3.7 fps ==> very poor!
-#   ./rtsp2mqttPdemand.py  -rtsp 8HD.rtsp 2./dev/null   (on Jetson Nano)
+#   ./rtsp2mqttPdemand.py  -rtsp 8HD.rtsp 2>/dev/null   (on Jetson Nano)
 #   ./AI_dev.py -nTPU 1 -d 0 -Nmqtt 8 -mqtt kahuna.local -camMQTT localhost
-#   8 1080p cameras : ~18.5 fps, ==> not so bad, but still inferior to AI_dev.py -rtsp 8HD.rtsp 
+#   8 1080p cameras : ~18.5 fps, ==> not so bad, but still inferior to AI_dev.py -rtsp 8HD.rtsp
 ##
+# NOTE: the above performace tests are with 1080p HD camera streams.  The rtsp2mqtt.py "server" and "mqtt cams" looked like a
+# good solution.  Unfortunately it didn't scale well at all when I upgraded to 4K UHD cameras
 ##
+#
 # Pi4B 2GB RAM, -nTPU 1 -d 0 -mqtt kahuna -rtsp xxx.rtsp 2>/dev/null
 #   1 1080p and 1 4K RTSP 3 fps streams (decoded on Pi4B):  ~5.8 fps,   processing about every frame
 #   2 1080p and 2 4K                                     :  ~8.5 fps,   two 4K might be too much for the Pi4, would 4GB RAM like the Nano help?
@@ -100,15 +103,16 @@
 # Pi4B 4GB Ram, -nTPU 1 -d 0 -mqtt kahuna -rtsp xxx.rtsp 2>/dev/null
 #   6 4K        : ~2.0 fps ==> far inferior to Jetson Namo for UHD streams.
 #   8 1080p     : ~14.0 fps ==> definitley not RAM issue, got ~13.9 with 2GB.
-#   3 4K        : ~4.9 fps    Pi4 is not good with 4K   
+#   3 4K        : ~4.9 fps    Pi4 is not good with 4K
 #
 # Pi4B 2GB RAM,  -camList 0 1 2 3 -camMQTT i5ai -nTPU 1 -d 0 -mqtt kahuna 2>/dev/null, cams 0 & 1 are 4K: ~6.1 fps
 # Pi4B 2GB RAM,  -camList 2 3 4 5 -camMQTT i5ai -nTPU 1 -d 0 -mqtt kahuna 2>/dev/null,                  : ~11.0 fps
 # Pi4B 2GB RAM,  -camList 2 3 4 5 6 7 -camMQTT i5ai -nTPU 1 -d 0 -mqtt kahuna 2>/dev/null,              : ~12.7 fps some inefficiencey in my MQTTcam code
 ##
 # 14OCT2019wbk
-# At this point, using rtsp2mqttPdemand.py is not recommended, as generally get better performance on IOT class machines with native
+# At this point, using rtsp2mqtt.py is not recommended, as generally get better performance on IOT class machines with native
 # RTSP stream decoding.  This is exactly the situation I was trying to improve, for now, rate as fail.
+#
 #
 # 17OCT2019wbk -- Add syncronized wait to rtsp thread startup.
 #
@@ -116,7 +120,7 @@
 # 4 UHD (4K)  :     ~2.8 fps
 # 4 HD (1080p):     ~11.8 fps (basically processing every frame)
 # 2 UHD 2 HD  :     ~6.7 fps (Pi4B struggles with 4K streams)
-# 5 HD        :     ~14.7 fps (basically processing every frame) 
+# 5 HD        :     ~14.7 fps (basically processing every frame)
 # 6 HD        :     ~15.0 fps, -d 0 (no display) ~16.7 fps
 # 8 HD        :    ~11.6 fps, -d 0 ~14.6 fps
 #
@@ -201,36 +205,37 @@ if 1:
     # *** get command line parameters
     # construct the argument parser and parse the arguments for this module
     ap = argparse.ArgumentParser()
-        
+
     ap.add_argument("-c", "--confidence", type=float, default=.70, help="detection confidence threshold")
     ap.add_argument("-vc", "--verifyConfidence", type=float, default=.80, help="detection confidence for verification")
     ap.add_argument("-nvc", "--noVerifyConfidence", type=float, default=.98, help="initial detection confidence to skip verification")
     ap.add_argument("-dbg", "--debug", action="store_true", help="display images to debug detection verification thresholds")
     ap.add_argument("-blob", "--blobFilter", type=float, default=.20, help="reject detections that are more than this fraction of the frame")
-    
+
     # specify number of Coral TPU sticks
     ap.add_argument("-nTPU", "--nTPU", type=int, default=0, help="number of Coral TPU devices")
-    
+
     # must specify number of NCS sticks for OpenVINO, trying load in a try block and error, wrecks the system!
     ap.add_argument("-nNCS", "--nNCS", type=int, default=0, help="number of Myraid devices")
     # Use NCS SDK V1, if OpenVINO is specified this setting will be ignored and OpenVINO used.
     ap.add_argument("-sdk", "--sdkV1", action="store_true", help="use NCS sdkV1 instead of OpenVINO")
     # use Mobilenet-SSD Caffe model instead of Tensorflow Mobilenet-SSDv2_coco
     ap.add_argument("-SSDv1", "--SSDv1", action="store_true", help="Use original Mobilenet-SSD Caffe model for NCS & OVcpu")
-    
+
     # use one mqtt thread for all cameras instead of one mqtt thread per mqtt camera
     ap.add_argument("-mqttMode", "--mqttCamOneThread", action="store_true", help="Use one mqtt thread for all mqtt cameras")
     ap.add_argument("-mqttDemand", "--mqttDemand", action="store_true", help="Use sendOne/N handshake for MQTT cameras")
-    
+
     # number of software (CPU only) AI threads, always have one thread per installed NCS stick
     ap.add_argument("-nt", "--nAIcpuThreads", type=int, default=0, help="0 --> no CPU AI thread, >0 --> N threads")
+    ap.add_argument("-GPU", "--GPU", action="store_true", help="use GPU insteas of CPU AI thread")
 
     # specify text file with list of URLs for camera rtsp streams
     ap.add_argument("-rtsp", "--rtspURLs", default="cameraURL.rtsp", help="path to file containing rtsp camera stream URLs")
-    
+
     # specify text file with list of URLs cameras http "Onvif" snapshot jpg images
     ap.add_argument("-cam", "--cameraURLs", default="cameraURL.txt", help="path to file containing http camera jpeg image URLs")
-    
+
     # display mode, mostly for test/debug and setup, general plan would be to run "headless"
     ap.add_argument("-d", "--display", type=int, default=1,
         help="display images on host screen, 0=no display, 1=live display")
@@ -241,10 +246,10 @@ if 1:
     # specify MQTT broker for camera images via MQTT, if not "localhost"
     ap.add_argument("-camMQTT", "--mqttCameraBroker", default="localhost", help="name or IP of MQTTcam/# message broker")
     # number of MQTT cameras published as Topic: MQTTcam/N, subscribed here as Topic: MQTTcam/#, Cams numbered 0 to N-1
-    ap.add_argument("-Nmqtt", "--NmqttCams", type=int, default=0, 
+    ap.add_argument("-Nmqtt", "--NmqttCams", type=int, default=0,
                     help="number of MQTT cameras published as Topic: MQTTcam/N,  Cams numbered 0 to N-1")
     # alternate, specify a list of camera numbers
-    ap.add_argument("-camList", "--mqttCamList", type=int, nargs='+', 
+    ap.add_argument("-camList", "--mqttCamList", type=int, nargs='+',
                     help="list of MQTTcam/N subscription topic numbers,  cam/N numbered from 0 to Nmqtt-1.")
 
     # specify display width and height
@@ -254,24 +259,24 @@ if 1:
     # specify host display width and height of camera image
     ap.add_argument("-iw", "--imwinWidth", type=int, default=640, help="camera host display window Width in pixels, default=640")
     ap.add_argument("-ih", "--imwinHeight", type=int, default=360, help="camera host display window Height in pixels, default=360")
- 
-    # enable local save of detections on AI host, useful if node-red notification code is not being used   
+
+    # enable local save of detections on AI host, useful if node-red notification code is not being used
     ap.add_argument("-ls", "--localSave", action="store_true", help="save detection images on local AI host")
     # specify file path of location to same detection images on the localhost
     ap.add_argument("-sp", "--savePath", default="", help="path to location for saving detection images, default ~/detect")
     # save all processed images, fills disk quickly, really slows things down, but useful for test/debug
     ap.add_argument("-save", "--saveAll", action="store_true", help="save all images not just detections on host filesystem, for test/debug")
-    
+
     # PiCamera module
     ap.add_argument("-pi", "--PiCam", action="store_true", help="Use Pi  camera module")
-   
+
     args = vars(ap.parse_args())
-    
-    
+
+
     mqttCamsOneThread = args["mqttCamOneThread"]
     MQTTdemand = args["mqttDemand"]
     PiCAM = args["PiCam"]
-    
+
 
 # mark start of this code in log file
 print("**************************************************************")
@@ -351,7 +356,7 @@ def on_message(client, userdata, msg):
         print(str(msg.topic)+": " + str(int(msg.payload)) + currentDT.strftime("   ... %Y-%m-%d %H:%M:%S"))
         CameraToView = int(msg.payload)
         return
-    
+
 
 def on_publish(client, userdata, mid):
     #print("mid: " + str(mid))      # don't think I need to care about this for now, print for initial tests
@@ -390,11 +395,12 @@ if not mqttCamsOneThread:   # use one mqtt thread per mqttCam
         # thanks to @krambriw on the node-red user forum for clarifying this for me
         npimg=np.frombuffer(msg.payload, np.uint8)      # convert msg.payload to numpy array
         frame = cv2.imdecode(npimg, cv2.IMREAD_COLOR)   # decode image file into openCV image
+        imageDT=datetime.datetime.now()
         if inframe[camN+mqttCamOffset].full():
-            [_,_]=inframe[camN+mqttCamOffset].get(False)
+            [_,_,_]=inframe[camN+mqttCamOffset].get(False)
             mqttFrameDrops[camN]+=1     # is happes here, shouldn't happen below
-        inframe[camN+mqttCamOffset].put((frame, camN+mqttCamOffset), False) 
-        ##inframe[camN+mqttCamOffset].put((frame, camN+mqttCamOffset), True, 0.200) 
+        inframe[camN+mqttCamOffset].put((frame, camN+mqttCamOffset, imageDT), False)
+        ##inframe[camN+mqttCamOffset].put((frame, camN+mqttCamOffset), True, 0.200)
     except:
         mqttFrameDrops[camN]+=1     # queue.full() is not 100% reliable
     if MQTTdemand:
@@ -436,10 +442,11 @@ else:
             # thanks to @krambriw on the node-red user forum for clarifying this for me
             npimg=np.frombuffer(msg.payload, np.uint8)      # convert msg.payload to numpy array
             frame = cv2.imdecode(npimg, cv2.IMREAD_COLOR)   # decode image file into openCV image
+            imageDT=datetime.datetime.now()
             if inframe[camN+mqttCamOffset].full():
-                [_,_]=inframe[camN+mqttCamOffset].get(False)
+                [_,_,_]=inframe[camN+mqttCamOffset].get(False)
                 mqttFrameDrops[camN]+=1     # is happes here, shouldn't happen below
-            inframe[camN+mqttCamOffset].put((frame, camN+mqttCamOffset), False) 
+            inframe[camN+mqttCamOffset].put((frame, camN+mqttCamOffset, imageDT), False)
         except:
             mqttFrameDrops[camN]+=1     # queue.full() is not 100% reliable
         try:
@@ -482,7 +489,7 @@ def main():
     global mqttFrameDrops
     global inframe
     global Ncameras
-    global mqttFrames    
+    global mqttFrames
     global mqttCamsOneThread
 
     # set variables from command line auguments or defaults
@@ -493,6 +500,7 @@ def main():
     SSDv1 = args["SSDv1"]
     NCS_sdkV1 = args["sdkV1"]
     nCPUthreads = args["nAIcpuThreads"]
+    useGPU = args["GPU"]
     confidence = args["confidence"]
     verifyConf = args["verifyConfidence"]
     noVerifyNeeded = args["noVerifyConfidence"]
@@ -522,7 +530,7 @@ def main():
     localSave = args["localSave"]
     if saveAll:
         localSave = True
-    
+
 
     # *** get Onvif camera URLs
     # cameraURL.txt file can be created by first running the nodejs program (requires node-onvif be installed):
@@ -618,7 +626,7 @@ def main():
                 cv2.namedWindow(name, flags=cv2.WINDOW_GUI_NORMAL + cv2.WINDOW_AUTOSIZE)
                 cv2.imshow(name, img)
                 cv2.waitKey(1)
-               
+
 
 
         # *** move windows into tiled grid
@@ -628,13 +636,13 @@ def main():
         ##displayHeight=1900  ## overrides for my 4K monitors
         Xshift=imwinWidth+3
         Yshift=imwinHeight+28
-        Nrows=int(displayHeight/imwinHeight)    
+        Nrows=int(displayHeight/imwinHeight)
         for i in range(Ncameras):
             name=str("Live_" + str(i))
             col=int(i/Nrows)
             row=i%Nrows
             cv2.moveWindow(name, left+col*Xshift, top+row*Yshift)
-                    
+
 
     # *** connect to MQTT broker for control/status messages
     print("[INFO] connecting to MQTT " + MQTTserver + " broker...")
@@ -674,7 +682,7 @@ def main():
             print("[INFO] starting " + str(SDKdevices) + " Movidius NCS SDK V1 AI Threads ...")
             AIt = list()
             for i in range(SDKdevices):
-                AIt.append(Thread(target=NCS_sdkv1_Thread.AI_thread, 
+                AIt.append(Thread(target=NCS_sdkv1_Thread.AI_thread,
                     args=(results, inframe, graph[i], i, cameraLock, nextCamera, Ncameras,
                         PREPROCESS_DIMS, confidence, noVerifyNeeded, verifyConf, dbg, QUITf, blobThreshold)))
                 AIt[i].start()
@@ -702,7 +710,7 @@ def main():
         print("[INFO] starting " + str(nCoral) + " Coral TPU AI Threads ...")
         for i in range(nCoral):
             print("... loading model...")
-            Ct.append(Thread(target=Coral_TPU_Thread.AI_thread, 
+            Ct.append(Thread(target=Coral_TPU_Thread.AI_thread,
                 args=(results, inframe, modelStr, labels, i, cameraLock, nextCamera, Ncameras,
                     PREPROCESS_DIMS, confidence, noVerifyNeeded, verifyConf, dbg, QUITf, blobThreshold)))
             Ct[i].start()
@@ -715,24 +723,33 @@ def main():
         import OpenVINO_Thread
         if SSDv1:
             print("[INFO] loading Caffe Mobilenet-SSD model for OpenVINO Myriad NCS/NCS2 AI threads...")
-            OVstr = "OVncs"
+            OVstr = "CaffeSSD"
         else:
-            print("[INFO] loading Tensor Flow Mobilenet-SSD v2 FP16 model for OpenVINO Myriad NCS/NCS2 AI threads...")
-            OVstr = "SSDv2ncs"
+            ## fragile works for 2021.1, need better way to detect openVINO version lacks NCS support and needs IR10 models
+            if cv2.__version__ == "4.5.0-openvino" or cv2.__version__ == "4.5.1-openvino":
+                print("[INFO] loading Tensor Flow Mobilenet-SSD v2 FP16 IR10 model for OpenVINO_2021.1 Myriad NCS2 AI threads...")
+                OVstr = "SSDv2_IR10"
+            else:
+                print("[INFO] loading Tensor Flow Mobilenet-SSD v2 FP16 model for OpenVINO Myriad NCS/NCS2 AI threads...")
+                OVstr = "SSDv2ncs"
         netOV=list()
         for i in range(nOVthreads):
             print("... loading model...")
             if SSDv1:
                 netOV.append(cv2.dnn.readNetFromCaffe("MobileNetSSD/MobileNetSSD_deploy.prototxt", "MobileNetSSD/MobileNetSSD_deploy.caffemodel"))
             else:
-                netOV.append(cv2.dnn.readNet("mobilenet_ssd_v2/MobilenetSSDv2coco.xml", "mobilenet_ssd_v2/MobilenetSSDv2coco.bin"))
+                ## fragile works for 2021.1, need better way to detect openVINO version lacks NCS support and needs IR10 models
+                if cv2.__version__ == "4.5.0-openvino" or cv2.__version__ == "4.5.1-openvino":
+                    netOV.append(cv2.dnn.readNet("mobilenet_ssd_v2/MobilenetSSDv2cocoIR10.xml", "mobilenet_ssd_v2/MobilenetSSDv2cocoIR10.bin"))
+                else:
+                    netOV.append(cv2.dnn.readNet("mobilenet_ssd_v2/MobilenetSSDv2coco.xml", "mobilenet_ssd_v2/MobilenetSSDv2coco.bin"))
             netOV[i].setPreferableBackend(cv2.dnn.DNN_BACKEND_INFERENCE_ENGINE)
             netOV[i].setPreferableTarget(cv2.dnn.DNN_TARGET_MYRIAD)  # specify the target device as the Myriad processor on the NCS
         # *** start OpenVINO AI threads
         OVt = list()
         print("[INFO] starting " + str(nOVthreads) + " OpenVINO Myriad NCS/NCS2 AI Threads ...")
         for i in range(nOVthreads):
-            OVt.append(Thread(target=OpenVINO_Thread.AI_thread, 
+            OVt.append(Thread(target=OpenVINO_Thread.AI_thread,
                 args=(results, inframe, netOV[i], i, cameraLock, nextCamera, Ncameras,
                     PREPROCESS_DIMS, confidence, noVerifyNeeded, verifyConf, dbg, OVstr, QUITf, blobThreshold, SSDv1)))
             OVt[i].start()
@@ -754,36 +771,55 @@ def main():
             import OpenVINO_Thread
             if SSDv1:
                 print("[INFO] loading Caffe Mobilenet-SSD model for OpenVINO CPU AI threads...")
-                OVstr = "OVcpu"
+                OVstr = "SSDv1_cpu"
                 for i in range(nCPUthreads):
                     net.append(cv2.dnn.readNetFromCaffe("MobileNetSSD/MobileNetSSD_deploy.prototxt", "MobileNetSSD/MobileNetSSD_deploy.caffemodel"))
                     net[i].setPreferableBackend(cv2.dnn.DNN_BACKEND_INFERENCE_ENGINE)
-                    net[i].setPreferableTarget(cv2.dnn.DNN_TARGET_CPU)          
+                    net[i].setPreferableTarget(cv2.dnn.DNN_TARGET_CPU)
             else:
-                print("[INFO] loading Tensor Flow Mobilenet-SSD v2 FP32 model for OpenVINO CPU AI threads...")
-                OVstr = "SSDv2cpu"
+                if cv2.__version__ == "4.5.0-openvino" or cv2.__version__ == "4.5.1-openvino":
+                    print("[INFO] loading Tensor Flow Mobilenet-SSD v2 FP16 IR10 model for OpenVINO_2021.1...")
+                    if useGPU:
+                        OVstr = "SSDv2_IR10gpu"
+                    else:
+                        OVstr = "SSDv2_IR10cpu"
+                else:
+                    print("[INFO] loading Tensor Flow Mobilenet-SSD v2 FP32 model for OpenVINO CPU AI threads...")
+                    OVstr = "SSDv2cpu"
                 for i in range(nCPUthreads):
-                    net.append(cv2.dnn.readNet("mobilenet_ssd_v2/MobilenetSSDv2cocoFP32.xml", "mobilenet_ssd_v2/MobilenetSSDv2cocoFP32.bin"))
-                    net[i].setPreferableBackend(cv2.dnn.DNN_BACKEND_INFERENCE_ENGINE)
-                    net[i].setPreferableTarget(cv2.dnn.DNN_TARGET_CPU)          
+                    if cv2.__version__ == "4.5.0-openvino" or cv2.__version__ == "4.5.1-openvino":
+                        net.append(cv2.dnn.readNet("mobilenet_ssd_v2/MobilenetSSDv2cocoIR10.xml", "mobilenet_ssd_v2/MobilenetSSDv2cocoIR10.bin"))
+                        net[i].setPreferableBackend(cv2.dnn.DNN_BACKEND_INFERENCE_ENGINE)
+                        if useGPU:
+                            print("Using OPEN_CL_FP16 GPU instead of CPU")
+                            net[i].setPreferableTarget(cv2.dnn.DNN_TARGET_OPENCL_FP16)
+                        else:
+                            net[i].setPreferableTarget(cv2.dnn.DNN_TARGET_CPU)
+                    else:
+                        net.append(cv2.dnn.readNet("mobilenet_ssd_v2/MobilenetSSDv2cocoFP32.xml", "mobilenet_ssd_v2/MobilenetSSDv2cocoFP32.bin"))
+                        net[i].setPreferableBackend(cv2.dnn.DNN_BACKEND_INFERENCE_ENGINE)
+                        net[i].setPreferableTarget(cv2.dnn.DNN_TARGET_CPU)
         else:
             import ocvdnn_CPU_Thread
             print("[INFO] loading Caffe Mobilenet-SSD model for ocvdnn CPU AI threads...")
             for i in range(nCPUthreads):
-                net.append(cv2.dnn.readNetFromCaffe("MobileNetSSD/MobileNetSSD_deploy.prototxt", "MobileNetSSD/MobileNetSSD_deploy.caffemodel"))       
+                net.append(cv2.dnn.readNetFromCaffe("MobileNetSSD/MobileNetSSD_deploy.prototxt", "MobileNetSSD/MobileNetSSD_deploy.caffemodel"))
         # *** start CPU AI threads
         CPUt = list()
         if cv2.__version__.find("openvino") > 0:
-            print("[INFO] starting " + str(nCPUthreads) + " OpenVINO CPU AI Threads ...")
+            if useGPU:
+                print("[INFO] starting " + str(nCPUthreads) + " OpenVINO GPU AI Threads ...")
+            else:
+                print("[INFO] starting " + str(nCPUthreads) + " OpenVINO CPU AI Threads ...")
         else:
             print("[INFO] starting " + str(nCPUthreads) + " openCV dnn module CPU AI Threads ...")
         for i in range(nCPUthreads):
             if cv2.__version__.find("openvino") > 0:
-                CPUt.append(Thread(target=OpenVINO_Thread.AI_thread, 
+                CPUt.append(Thread(target=OpenVINO_Thread.AI_thread,
                     args=(results, inframe, net[i], i, cameraLock, nextCamera, Ncameras,
                         PREPROCESS_DIMS, confidence, noVerifyNeeded, verifyConf, dbg, OVstr, QUITf, blobThreshold, SSDv1)))
             else:
-                CPUt.append(Thread(target=ocvdnn_CPU_Thread.AI_thread, 
+                CPUt.append(Thread(target=ocvdnn_CPU_Thread.AI_thread,
                     args=(results, inframe, net[i], i, cameraLock, nextCamera, Ncameras,
                         PREPROCESS_DIMS, confidence, noVerifyNeeded, verifyConf, dbg, QUITf, blobThreshold)))
             CPUt[i].start()
@@ -832,7 +868,7 @@ def main():
         if MQTTdemand:
             for i in camList:
                 mqttCam.publish(str("sendOne/" + str(i)), "", 0, False)   # start messages
-    
+
 
     # *** start camera reading threads
     o = list()
@@ -962,7 +998,7 @@ def main():
                 break       # give up! Hope watchdog gets us going again!
     #end of while not QUIT  loop
     #*************************************************************************************************************************************
-    
+
 
 
     # *** Clean up for program exit
@@ -973,13 +1009,13 @@ def main():
     print("*** AI processing approx. FPS: {:.2f} ***".format(fps.fps()))
     print("[INFO] Run elapsed time: {:.2f}".format(fps.elapsed()))
     print("[INFO] Frames processed by AI system: " + str(fps._numFrames))
-    print("[INFO] Main looped waited for results: " + str(waitCnt) + " times.")
+    print("[INFO] Main loop waited for results: " + str(waitCnt) + " times.")
     currentDT = datetime.datetime.now()
     client.publish("AI/Status", "Python AI stopped." + currentDT.strftime("  %Y-%m-%d %H:%M:%S"), 2, True)
     print("[INFO] AI/Status: Python AI stopped." + currentDT.strftime("  %Y-%m-%d %H:%M:%S"))
 
-    
-    # stop cameras 
+
+    # stop cameras
     if Nmqtt > 0:
       if not mqttCamsOneThread:
         for i in range(Nmqtt):
@@ -993,7 +1029,7 @@ def main():
             print("MQTTcam/" + str(camList[i]) + " has dropped: " + str(mqttFrameDrops[i]) + " frames out of: " + str(mqttFrames[i]))
     if PiCAM:
         Pi_vs.stop()
-        
+
     # wait for threads to exit
     if Nonvif > 0:
         for i in range(Nonvif):
@@ -1019,12 +1055,12 @@ def main():
         for i in range(nCoral):
             Ct[i].join()
         print("[INFO] All Coral TPU AI Threads have exited ...")
-    
+
     if SDKdevices > 0:
         for i in range(SDKdevices):
             AIt[i].join()
         print("[INFO] All NCS SDK V1 AI Threads have exited ...")
-    
+
 
     # destroy all windows if we are displaying them
     if args["display"] > 0:
@@ -1060,7 +1096,7 @@ def main():
     print("Program Exit." + currentDT.strftime("  %Y-%m-%d %H:%M:%S"))
     print("")
     print("")
-    
+
 
 
 # *** RTSP Sampling Thread
@@ -1096,12 +1132,12 @@ def rtsp_thread(inframe, camn, URL, QUITf):
                     print('*** Will close and re-open Camera' + str(camn) +' RTSP stream in attempt to recover.')
                 # try closing the stream and reopeing it, I have one straight from China that does this error regularly
                 Rcap.release()
-                time.sleep(30.0)                   
+                time.sleep(30.0)
                 Rcap=cv2.VideoCapture(URL)
                 Rcap.set(cv2.CAP_PROP_BUFFERSIZE, 2)
                 if not Rcap.isOpened():
                     if not Error2:
-                        Error2=True                   
+                        Error2=True
                         currentDT = datetime.datetime.now()
                         print('[Error2!] RTSP stream'+ str(camn) + ' re-open failed! $$$ ' + URL[0:33] + ' --- ' + currentDT.strftime(" %Y-%m-%d %H:%M:%S"))
                         print('*** Will loop closing and re-opening Camera' + str(camn) +' RTSP stream, further messages suppressed.')
@@ -1120,13 +1156,14 @@ def rtsp_thread(inframe, camn, URL, QUITf):
             time.sleep(10.0)    # So far, I've never seen this Exception message.
         try:
             if frame is not None:
+                imageDT=datetime.datetime.now()
                 if inframe.full():
-                    [_,_]=inframe.get(False)    # remove oldest sample to make space in queue
-                    ocnt+=1     # if happens here shouldn't happen below     
-                inframe.put((frame, camn), False)   # no block if queue full, go grab fresher frame
+                    [_,_,_]=inframe.get(False)    # remove oldest sample to make space in queue
+                    ocnt+=1     # if happens here shouldn't happen below
+                inframe.put((frame, camn, imageDT), False)   # no block if queue full, go grab fresher frame
         except: # most likely queue is full, Python queue.full() is not 100% reliable
             # a large drop count for rtsp streams is not a bad thing as we are trying to keep the input buffers nearly empty to reduce latency.
-            ocnt+=1          
+            ocnt+=1
     Rcap.release()
     print("RTSP stream sampling thread" + str(camn) + " is exiting, dropped frames " + str(ocnt) + " times.")
 
@@ -1137,7 +1174,7 @@ def rtsp_thread(inframe, camn, URL, QUITf):
 if PiCAM:
   from picamera.array import PiRGBArray
   from picamera import PiCamera
-    
+
 # modified VideoStream class from imutils library, I find the PiCamera is not really suitable for 24/7
 # usage.  These modifications recover from some of the failures, but occasionally still need to reboot
 # or in somewhat rare cases, cycle the power.  Could be power releated,since putting test system on UPS
@@ -1158,6 +1195,7 @@ if PiCAM:
         self.stopped = False
         self.error=False
         self.ocnt=0
+        self.imageDT=datetime.datetime.now()
 
     def start(self):
         # start the thread to read frames from the video stream
@@ -1175,11 +1213,12 @@ if PiCAM:
                 self.frame = f.array
                 self.rawCapture.truncate(0)
                 self.error = False
+                self.imageDT = datetime.datetime.now()
                 try:
                   if self.inQueue.full():
-                    [_,_]=self.inQueue.get(False)    # remove oldest sample to make space in queue
-                    self.ocnt+=1     # if happens here shouldn't happen below     
-                  self.inQueue.put((self.frame, self.camn), False)   # no block if queue full, go grab fresher frame
+                    [_,_,_]=self.inQueue.get(False)    # remove oldest sample to make space in queue
+                    self.ocnt+=1     # if happens here shouldn't happen below
+                  self.inQueue.put((self.frame, self.camn, self.imageDT), False)   # no block if queue full, go grab fresher frame
                 except:
                     self.ocnt+=1
         except Exception as e:
@@ -1222,7 +1261,7 @@ if PiCAM:
       # indicate that the thread should be stopped
       self.stopped = True
 
-    
+
 
 
 
