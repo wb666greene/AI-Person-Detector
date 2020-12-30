@@ -129,6 +129,9 @@ I don't think these two steps can be run on the Pi.  Here is my model downloader
 And my model optimizer command (you need to chage the /home/wally for your system):
 
 	./mo_tf.py --input_model /home/wally/ssdv2/frozen_inference_graph.pb --tensorflow_use_custom_operations_config /home/wally/ssdv2/ssd_v2_support.json --tensorflow_object_detection_api_pipeline_config /home/wally/ssdv2/pipeline.config --data_type FP16 --log_level DEBUG
+	# R2021.1 model optimizer command:
+	python3 mo_tf.py --input_model /home/ai/ssdv2/frozen_inference_graph.pb --tensorflow_use_custom_operations_config /home/ai/ssdv2/ssd_v2_support.json --tensorflow_object_detection_api_pipeline_config /home/ai/ssdv2/pipeline.config --data_type FP16
+
 	      
    **At this point you now have a nice version of OpenCV with some extra OpenVINO support functions installed,
    EXCEPT the OpenCV 4.1.2-openvino has issues with mp4 (h.264/h.265) decoding, which breaks using rtsp streams!
@@ -137,6 +140,11 @@ And my model optimizer command (you need to chage the /home/wally for your syste
    **Update 6DEC20: The apt installation of OpenVINO release 2020.3 tested with Ubuntu-Mate 16.04 on an Atomic Pi (Atom Z8550) 
    the h.264/h.265 decoding issue seems solved, its OpenCV version 4.3.0-openvino-2020.3
    Also note that R2020.3 is the last release that supports the original NCS, R2020.4 and beyond only support the NCS2**
+   
+   **Update 30DEC20: OpenVINO R2021.1 supports Ubuntu 20.04, but drops support for the original NCS.  AI_dev.py has been modified
+   to automatically use the IR10 model instead of the original IR5 model I used initially depending on OpenVINO version.**  
+   I also added GPU support (DNN_TARGET_OPENCL_FP16) and added results comparing NCS2, GPU and CPU on an i7-8750H ASUS Fx-705gm 
+   to the performance section at the end.
 
 # 
 #### Setup the Coral TPU: https://coral.ai/docs/accelerator/get-started/
@@ -337,3 +345,8 @@ If you learn by watching videos this is a good place to start:  https://www.yout
             - 6 HD with 2 NCS   :  ~10.5 fps
    -    - TPU.py
             - 6 HD (1080p)      :  ~25.2 fps
+
+- **AI_dev.py runing Ubuntu-Mate 20.04, OpenVINO R2021.1 on i7-8750H.**
+    - Myraid NCS2 USB3            :  ~14 fps  (DNN_TARGET_MYRIAD)
+    - OpenCV 4.5.0-openvino  GPU  :  ~30 fps  (DNN_TARGET_OPENCL_FP16)
+    - OpenCV 4.5.0-openvino  CPU  :  ~41 fps  (DNN_TARGET_CPU)
