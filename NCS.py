@@ -80,6 +80,9 @@
 #
 ## 10DEC2019wbk
 # Increase queue depth to 2, test if queue full, read and discard oldest to make room for newest
+##
+## 7DEC2020wbk
+# Spin off a version to use Movidius NCS/NCS2 with OpenVINO R2020.3, the last to support original NCS.
 
 
 # import the necessary packages
@@ -103,16 +106,10 @@ import datetime
 import requests
 from PIL import Image
 from io import BytesIO
-
 # threading stuff
 from queue import Queue
 from threading import Thread, Lock
-
-# TPU
-from edgetpu.detection.engine import DetectionEngine
-from edgetpu import __version__ as edgetpu_version
-
-# for saving PTZ view maps
+## to save/load fisheye map file
 import pickle
 
 
@@ -133,8 +130,11 @@ global mqttCamOffset
 global inframe
 global mqttFrameDrops
 global mqttFrames
-global dbg
 global CamName
+# this variable to distribute queued data to the AI threads needs syncronization
+global nextCamera
+nextCamera = 0      # next camera queue for AI threads to use to grab a frame
+cameraLock = Lock()
 
 
 ## Specific for my use
@@ -182,7 +182,7 @@ CamName=[
 
 
 # *** constants for MobileNet-SSD & MobileNet-SSD_V2  AI models
-# frame dimensions should be square for MobileNet-SSD
+# frame dimensions should be sqaure for MobileNet-SSD
 PREPROCESS_DIMS = (300, 300)
 
 
@@ -191,7 +191,6 @@ print("**************************************************************")
 currentDT = datetime.datetime.now()
 print("*** " + currentDT.strftime(" %Y-%m-%d %H:%M:%S"))
 print("[INFO] using openCV-" + cv2.__version__)
-print('Edgetpu_api version: ' + edgetpu_version)
 
 
 # *** Function definitions
@@ -355,9 +354,13 @@ def main():
     # construct the argument parser and parse the arguments for this module
     ap = argparse.ArgumentParser()
 
+    # must specify number of NCS sticks for OpenVINO, trying load in a try block and error, wrecks the system!
+    ap.add_argument("-nNCS", "--nNCS", type=int, default=1, help="number of Myraid devices")
+
     ap.add_argument("-c", "--confidence", type=float, default=0.60, help="detection confidence threshold")
-    ap.add_argument("-vc", "--verifyConfidence", type=float, default=0.70, help="detection confidence for verification")
+    ap.add_argument("-vc", "--verifyConfidence", type=float, default=0.65, help="detection confidence for verification")
     ap.add_argument("-nvc", "--noVerifyConfidence", type=float, default=.98, help="initial detection confidence to skip verification")
+    ap.add_argument("-blob", "--blobFilter", type=float, default=.20, help="reject detections that are more than this fraction of the frame")
 
     # specify text file with list of URLs for camera rtsp streams
     ap.add_argument("-rtsp", "--rtspURLs", default="MYcameraURL.rtsp", help="path to file containing rtsp camera stream URLs")
@@ -398,9 +401,11 @@ def main():
 
 
     # set variables from command line auguments or defaults
+    nOVthreads = args["nNCS"]
     confidence = args["confidence"]
     verifyConf = args["verifyConfidence"]
     noVerifyNeeded = args["noVerifyConfidence"]
+    blobThreshold = args["blobFilter"]
     MQTTcameraServer = args["mqttCameraBroker"]
     Nmqtt = args["NmqttCams"]
     camList=args["mqttCamList"]
@@ -542,7 +547,7 @@ def main():
 
     # *** allocate queues
     # we simply make one queue for each camera, rtsp stream, and MQTTcamera
-    QDEPTH = 2      # bump up for trial of "read queue if full and then write to queue" in camera input thread
+    QDEPTH = 3
 ##    QDEPTH = 1      # small values improve latency
     print("[INFO] allocating camera and stream image queues...")
     mqttCamOffset = Ncameras
@@ -555,7 +560,7 @@ def main():
     if Nmqtt > 0:
         print("[INFO] allocating " + str(Nmqtt) + " MQTT image queues...")
 ##    results = Queue(2*Ncameras)
-    results = Queue(int(Ncameras/2)+1)
+    results = Queue(Ncameras+1)
     inframe = list()
     for i in range(Ncameras):
         inframe.append(Queue(QDEPTH))
@@ -630,21 +635,6 @@ def main():
     client.publish("ImageBuffer/!AI has Started.", bytearray(img_as_jpg), 0, False)
 
 
-    # *** setup and start Coral AI threads
-    # Might consider moving this into the thread function.
-    ### Setup Coral AI
-    # initialize the labels dictionary
-    print("[INFO] parsing mobilenet_ssd_v2 coco class labels for Coral TPU...")
-    labels = {}
-    for row in open("mobilenet_ssd_v2/coco_labels.txt"):
-        # unpack the row and update the labels dictionary
-        (classID, label) = row.strip().split(maxsplit=1)
-        labels[int(classID)] = label.strip()
-    print("[INFO] loading Coral mobilenet_ssd_v2_coco model...")
-    model = DetectionEngine("mobilenet_ssd_v2/mobilenet_ssd_v2_coco_quant_postprocess_edgetpu.tflite")
-
-
-
     # *** Open second MQTT client thread for MQTTcam/# messages for "MQTT cameras"
     # Requires rtsp2mqttPdemand.py mqtt camera source
     if Nmqtt > 0:
@@ -703,10 +693,41 @@ def main():
 
 
 
-    # *** start Coral TPU thread
-    print("[INFO] starting Coral TPU AI Thread ...", )
-    Ct=Thread(target=TPU_thread, args=(results, inframe, model, labels, Ncameras, PREPROCESS_DIMS, confidence, noVerifyNeeded, verifyConf))
-    Ct.start()
+    # *** start Modivius threads
+    # *** setup and start Myriad OpenVINO
+    ## Hmmm... single NCS, Caffe SSDv1 ~9.7 fps with 5 Onvif cameras,  TensorFlow SSDv2  gets only ~5.7 fps, with NCS2 ~11.8 fps
+    if nOVthreads > 0:
+        if cv2.__version__.find("openvino") > 0:
+            ## fragile works for 2021.1, need better way to detect openVINO version lacks NCS support and needs IR10 models
+            if cv2.__version__ == "4.5.0-openvino" or cv2.__version__ == "4.5.1-openvino":
+                print("[INFO] loading Tensor Flow Mobilenet-SSD v2 FP16 IR10 model for OpenVINO_2021.1 Myriad NCS2 AI threads...")
+                OVstr = "SSDv2_IR10"
+            else:
+                print("[INFO] loading Tensor Flow Mobilenet-SSD v2 FP16 model for OpenVINO Myriad NCS/NCS2 AI threads...")
+                OVstr = "SSDv2ncs"
+            netOV=list()
+            for i in range(nOVthreads):
+                print("... loading model...")
+                ## fragile works for 2021.1, need better way to detect openVINO version lacks NCS support and needs IR10 models
+                if cv2.__version__ == "4.5.0-openvino" or cv2.__version__ == "4.5.1-openvino":
+                    netOV.append(cv2.dnn.readNet("mobilenet_ssd_v2/MobilenetSSDv2cocoIR10.xml", "mobilenet_ssd_v2/MobilenetSSDv2cocoIR10.bin"))
+                else:
+                    netOV.append(cv2.dnn.readNet("mobilenet_ssd_v2/MobilenetSSDv2coco.xml", "mobilenet_ssd_v2/MobilenetSSDv2coco.bin"))
+                netOV[i].setPreferableBackend(cv2.dnn.DNN_BACKEND_INFERENCE_ENGINE)
+                netOV[i].setPreferableTarget(cv2.dnn.DNN_TARGET_MYRIAD)  # specify the target device as the Myriad processor on the NCS
+            # *** start OpenVINO AI threads
+            OVt = list()
+            print("[INFO] starting " + str(nOVthreads) + " OpenVINO Myriad NCS/NCS2 AI Threads ...")
+            for i in range(nOVthreads):
+                OVt.append(Thread(target=AI_thread,
+                args=(results, inframe, netOV[i], i, cameraLock, nextCamera, Ncameras,
+                    PREPROCESS_DIMS, confidence, noVerifyNeeded, verifyConf, OVstr, blobThreshold)))
+                OVt[i].start()
+        else:
+            print("[ERROR!] OpenVINO version of openCV is not active, check $PYTHONPATH")
+            print(" No MYRIAD (NCS/NCS2) OpenVINO threads can be created!   Exiting...")
+            print("")
+            quit()
 
 
 
@@ -764,13 +785,13 @@ def main():
                     if (personDetected and not AlarmMode.count("Idle")) or saveAll:  # save detected image
                         cv2.imwrite(outName, img, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
                 if personDetected:
-                    #outName=str("AIdetection/!detect/" + folder + "/" + filename + "_" + "Cam" + str(cami) +".jpg")
-                    outName=str("AIdetection/!detect/" + folder + "/" + filename + "_" + CamName[cami] +"_AI.jpg")
+                    #outName=str("AIdetection/!detect/" + folder + "/" + filename + "_" + "Cam" + str(cami) + "_" + AlarmMode +"_AI.jpg")
+                    outName=str("AIdetection/!detect/" + folder + "/" + filename + "_" + CamName[cami] + "_" + AlarmMode +"_AI.jpg")
                     outName=outName + "!" + str(bp[0]) + "!" + str(bp[1]) + "!" + str(bp[2]) + "!" + str(bp[3]) + "!" + str(bp[4]) + "!" + str(bp[5]) + "!" + str(bp[6]) + "!" + str(bp[7])
                     retv, img_as_jpg = cv2.imencode('.jpg', img, [int(cv2.IMWRITE_JPEG_QUALITY), 70])    # for sending image as mqtt buffer, 10X+ less data being sent.
                     if retv:
                         client.publish(str(outName), bytearray(img_as_jpg), 0, False)
-##                        print(outName)  # log detections
+###                        print(outName)  # log detections
                     else:
                         print("[INFO] conversion of np array to jpg in buffer failed!")
                         continue
@@ -798,7 +819,7 @@ def main():
                     if key == ord("q"): # if the `q` key was pressed, break from the loop
                         QUIT=True   # exit main loop
                         continue
-                aliveCount = (aliveCount+1) % 200
+                aliveCount = (aliveCount+1) % 100
                 if aliveCount == 0:
                     client.publish("AmAlive", "true", 0, False)
                 if prevUImode != UImode:
@@ -861,9 +882,11 @@ def main():
         for i in range(Nfisheye):
             o[i+Nonvif+Nrtsp+Nvirt].join()
         print("[INFO] All rtsp Camera have exited ...")
-    # stop TPU
-    Ct.join()
-    print("[INFO] All Coral TPU AI Thread has exited ...")
+    # Movidius
+    if nOVthreads > 0:
+        for i in range(nOVthreads):
+            OVt[i].join()
+        print("[INFO] All OpenVINO Myriad NCS/NCS2 AI Threads have exited ...")
 
 
     # destroy all windows if we are displaying them
@@ -899,30 +922,28 @@ def main():
 #################################################### Thread Functions ###############################################################
 #####################################################################################################################################
 
-
-## *** Coral TPU Thread ***
+## *** OpenVINO NCS/NCS2 (aka MYRIAD) AI Thread ***
 #******************************************************************************************************************
 #******************************************************************************************************************
-# All spacial and "blob" false detection filtering is moved to the -mqtt controller host instead of being done here.
-def TPU_thread(results, inframe, model, labels, Ncameras, PREPROCESS_DIMS, confidence, noVerifyNeeded, verifyConf):
+def AI_thread(results, inframe, net, tnum, cameraLock, nextCamera, Ncameras,
+                PREPROCESS_DIMS, confidence, noVerifyNeeded, verifyConf, dnnTarget, blobThreshold):
     global QUIT
+
+    print("[INFO] OpenVINO " + dnnTarget + " AI thread" + str(tnum) + " is running...")
+    fcnt=0
     waits=0
     drops=0
-    fcnt=0
-    cq=0
-    nextCamera=0
-    ai = "TPU"
+    prevDetections=list()
+    for i in range(Ncameras):
+        prevDetections.append(0)
+    if tnum > 0:
+        dnnTarget = dnnTarget + str(tnum)
     cfps = FPS().start()
-##    # the region filter can also be done in the node-red instead, doing it here is easier for only one rtsp stream and two virtual cameras.
-##    poly = [
-##        [[50,0],[0,1280],[1280,430],[0,350]],
-##        [[0,0],[1280,0],[480,440],[0,440]],
-##        [[0,120],[960,150],[960,580],[0,480]],
-##        [[0,120],[960,150],[960,580],[0,480]]
-##    ]
     while not QUIT:
+        cameraLock.acquire()
         cq=nextCamera
         nextCamera = (nextCamera+1)%Ncameras
+        cameraLock.release()
         # get a frame
         try:
             (image, cam, imageDT) = inframe[cq].get(True,0.100)
@@ -932,112 +953,101 @@ def TPU_thread(results, inframe, model, labels, Ncameras, PREPROCESS_DIMS, confi
             continue
         if image is None:
             continue
+        (h, w) = image.shape[:2]
+        zoom=image.copy()   # for zoomed in verification run
+        blob = cv2.dnn.blobFromImage(image, size=PREPROCESS_DIMS)
+        personIdx=1
+        # pass the blob through the network and obtain the detections and predictions
+        net.setInput(blob)
+        detections = net.forward()
+###        imageDT = datetime.datetime.now()
+        # loop over the detections, pretty much straight from the PyImageSearch sample code.
         personDetected = False
         ndetected=0
-        (h,w)=image.shape[:2]
-        zoom=image.copy()   # for zoomed in verification run
-        frame = cv2.cvtColor(cv2.resize(image, PREPROCESS_DIMS), cv2.COLOR_BGR2RGB)
-        frame = Image.fromarray(frame)
-        if edgetpu_version < '2.11.2':
-            detection = model.DetectWithImage(frame, threshold=confidence, keep_aspect_ratio=True, relative_coord=False)
-        else:
-            detection = model.detect_with_image(frame, threshold=confidence, keep_aspect_ratio=True, relative_coord=False)
-        cfps.update()    # update the FPS counter
         fcnt+=1
-        ##imageDT = datetime.datetime.now()
-        # loop over the detection results
+        cfps.update()    # update the FPS counter
         boxPoints=(0,0, 0,0, 0,0, 0,0)  # startX, startY, endX, endY, Xcenter, Ycenter, Xlength, Ylength
-        for r in detection:
-            if r.label_id == 0:
-                # extract the bounding box and box and predicted class label
-                box = r.bounding_box.flatten().astype("int")
-                label = labels[r.label_id]
-                initialConf=r.score
-                (startX, startY, endX, endY) = box.flatten().astype("int")
-                X_MULTIPLIER = float(w) / PREPROCESS_DIMS[0]
-                Y_MULTIPLIER = float(h) / PREPROCESS_DIMS[1]
-                startX = int(startX * X_MULTIPLIER)
-                startY = int(startY * Y_MULTIPLIER)
-                endX = int(endX * X_MULTIPLIER)
-                endY = int(endY * Y_MULTIPLIER)
-##                # Screen for lower right of bounding box inside region of interest, can do here or in node-red
-##                if point_inside_polygon(endX,endY,poly[cam]):
-##                    boxPoints=(startX,startY, endX,endY)
-##                else:
-##                    continue
-                cv2.rectangle(image, (startX, startY), (endX, endY),(0, 255, 0), 2)
+        for i in np.arange(0, detections.shape[2]):
+            conf = detections[0, 0, i, 2]   # extract the confidence (i.e., probability)
+            idx = int(detections[0, 0, i, 1])   # extract the index of the class label
+            # filter out weak detections by ensuring the `confidence` is greater than the minimum confidence
+            if conf > confidence and idx == personIdx and not np.array_equal(prevDetections[cam], detections):
+                # then compute the (x, y)-coordinates of the bounding box for the object
+                box = detections[0, 0, i, 3:7] * np.array([w, h, w, h])
+                (startX, startY, endX, endY) = box.astype("int")
+                startX=max(1, startX)
+                startY=max(1, startY)
+                endX=min(endX, w-1)
+                endY=min(endY,h-1)
                 xlen=endX-startX
                 ylen=endY-startY
                 xcen=int((startX+endX)/2)
                 ycen=int((startY+endY)/2)
                 boxPoints=(startX,startY, endX,endY, xcen,ycen, xlen,ylen)
-                # draw the bounding box and label on the image
-                label = "{:.1f}%  C:{},{}  W:{} H:{}  UL:{},{}  LR:{},{} TPU".format(initialConf * 100,
-                    str(xcen), str(ycen), str(xlen), str(ylen), str(startX), str(startY), str(endX), str(endY))
+                # adhoc "fix" for out of focus blobs close to the camera
+                # out of focus blobs sometimes falsely detect -- insects walking on camera, etc.
+                # In my real world use I have some static false detections, mostly under IR or mixed lighting -- hanging plants etc.
+                # I put camera specific adhoc filters here based on (xlen,ylen,xcenter,ycenter)
+                # TODO: come up with better way to do it, probably return (xlen,ylen,xcenter,ycenter) and filter at saving or Notify step.
+                if float(xlen*ylen)/(w*h) > blobThreshold:     # detection filling too much of the frame is bogus
+                   continue
+                # display and label the prediction
+                label = "{:.1f}%  C:{},{}  W:{} H:{}  UL:{},{}  LR:{},{}  {}".format(conf * 100,
+                         str(xcen), str(ycen), str(xlen), str(ylen), str(startX), str(startY), str(endX), str(endY), dnnTarget)
                 cv2.putText(image, label, (2, (h-5)-(ndetected*28)), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 0), 2, cv2.LINE_AA)
+                cv2.rectangle(image, (startX, startY), (endX, endY), (0, 255, 0), 2)
                 personDetected = True
-                ndetected=ndetected+1
-                break   # one person detection is enough
-        # zoom in and repeat inference to verify detection
+                initialConf=conf
+                ndetected+=1
+                break   # one is enough
+        prevDetections[cam]=detections
         if personDetected and initialConf < noVerifyNeeded:
             personDetected = False  # repeat on zoomed detection box
             try:
-                ## removing this box expansion really hurt the verification sensitivity
-                ## so try not expanding really small detections as my false positive was 89x144 so don't expand small boxes
-                if max(xlen,ylen) > 150:
-                    # expand detection box by 15% for verification
-                    startY=int(0.85*startY)
-                    startX=int(0.85*startX)
-                    endY=min(int(1.15*endY),h-1)
-                    endX=min(int(1.15*endX),w-1)
-                else:
-                    # expand by 5%
-                    startY=int(0.95*startY)
-                    startX=int(0.95*startX)
-                    endY=min(int(1.05*endY),h-1)
-                    endX=min(int(1.05*endX),w-1)
+                # expand detection box by 10% for verification
+                startY=int(0.9*startY)
+                startX=int(0.9*startX)
+                endY=min(int(1.1*endY),h-1)
+                endX=min(int(1.1*endX),w-1)
                 img = cv2.resize(zoom[startY:endY, startX:endX], PREPROCESS_DIMS, interpolation = cv2.INTER_AREA)
             except Exception as e:
-                print(" Coral crop region ERROR: {}:{} {}:{}", startY, endY, startX, endX)
+                print(dnnTarget + " crop region ERROR: ", startY, endY, startX, endX)
                 continue
-            (h, w) = img.shape[:2]  # this will be PREPROCESS_DIMS (300, 300)
-            if (h,w) != PREPROCESS_DIMS:
-                print(" Bad resize!")
-                continue
-            frame = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-            frame = Image.fromarray(frame)
-            if edgetpu_version < '2.11.2':
-                detection = model.DetectWithImage(frame, threshold=verifyConf, keep_aspect_ratio=True, relative_coord=False)
-            else:
-                detection = model.detect_with_image(frame, threshold=verifyConf, keep_aspect_ratio=True, relative_coord=False)
+            (h, w) = img.shape[:2]
+            blob = cv2.dnn.blobFromImage(img, size=PREPROCESS_DIMS)
+            net.setInput(blob)
+            detections = net.forward()
+            imgDT = datetime.datetime.now()
             cfps.update()    # update the FPS counter
-            # loop over the detection results
+            tlabel = "{:.1f}%  ".format(initialConf * 100) + dnnTarget
+            cv2.putText(img, tlabel, (2, 28), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 0), 2, cv2.LINE_AA)
             boxPointsV = (0,0, 0,0, 0,0, 0,0)  # startX, startY, endX, endY, 0, 0, 0, 0 only first four are used for dbg plots
-            for r in detection:
-              if r.label_id == 0:
-                  if r.score > verifyConf:
-                        personDetected = True
-                        text = "Verify: {:.1f}%".format(r.score * 100)   # show verification confidence
+            for i in np.arange(0, detections.shape[2]):
+                conf = detections[0, 0, i, 2]
+                idx = int(detections[0, 0, i, 1])
+                if  idx == personIdx:
+                    if conf > verifyConf:
+                        text = "Verify: {:.1f}%".format(conf * 100)   # show verification confidence
                         cv2.putText(image, text, (2, 28), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 0), 2)
-                        break    # only need one verification
+                        personDetected = True
+                        break
         else:
-            ndetected=0     # flag that verification not needed
+            ndetected = 0   # flag that no verification was needed
         # Queue results
         try:
             if personDetected:
-                results.put((image, cam, personDetected, imageDT, ai, boxPoints), True, 1.0)    # try not to drop frames with detections
+                results.put((image, cam, personDetected, imageDT, dnnTarget, boxPoints), True, 1.0)    # try not to drop frames with detections
             else:
-                # change image to zoom if you don't want unverified detection box on displayed/saved image, at low frame rates the box is informative
-##                results.put((image, cam, personDetected, imageDT, "Coral"), True, 0.033)
-                results.put((image, cam, personDetected, imageDT, ai, boxPoints), True, 0.016)
+                results.put((image, cam, personDetected, imageDT, dnnTarget, boxPoints), True, 0.016)
         except:
-            # presumably results queue was full, main thread too slow.
+            # presumably outptut queue was full, main thread too slow.
             drops+=1
             continue
     # Thread exits
     cfps.stop()    # stop the FPS counter timer
-    print("Coral TPU thread waited: " + str(waits) + " dropped: " + str(drops) + " out of "
+    print("OpenVINO " + dnnTarget + " AI thread" + str(tnum) + ", waited: " + str(waits) + " dropped: " + str(drops) + " out of "
          + str(fcnt) + " images.  AI: {:.2f} inferences/sec".format(cfps.fps()))
+
 
 
 
@@ -1178,7 +1188,7 @@ def FErtsp_thread(inframe, Nfe, FEoffset, PTZparam, camn, URL):
                 if not Error:
                     Error=True
                     currentDT = datetime.datetime.now()
-                    print('[Error!] RTSP Camera FE'+ str(camn) + ': ' + URL[0:33] + currentDT.strftime(" %Y-%m-%d %H:%M:%S"))
+                    print('[Error!] RTSP FE'+ str(camn) + ': ' + URL[0:33] + currentDT.strftime(" %Y-%m-%d %H:%M:%S"))
                     print('*** Will close and re-open Camera' + str(camn) +' RTSP stream in attempt to recover.')
                 # try closing the stream and reopeing it, I have one straight from China that does this error regularly
                 Rcap.release()
@@ -1213,7 +1223,7 @@ def FErtsp_thread(inframe, Nfe, FEoffset, PTZparam, camn, URL):
                         [_,_,_]=inframe[FEoffset+i].get(False)    # remove oldest sample to make space in queue
                         ocnt[i]+=1   # it this happens here, it shouldn't happen below
                     PTZview=fe[i].getImage(frame)
-                    inframe[FEoffset+i].put((PTZview, FEoffset+i, imageDT), True)  ## force this frame to complete in all queues
+                    inframe[FEoffset+i].put((PTZview, FEoffset+i, imageDT), True)
                 except: # most likely queue is full, Python queue.full() is not 100% reliable
                     # a large drop count for rtsp streams is not a bad thing as we are trying to keep the input buffers nearly empty to reduce latency.
                     ocnt[i]+=1
