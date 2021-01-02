@@ -349,6 +349,7 @@ def main():
     global Ncameras
     global mqttFrames
     global CamName
+    global blobThreshold
 
 
     # *** get command line parameters
@@ -358,6 +359,7 @@ def main():
     ap.add_argument("-c", "--confidence", type=float, default=0.60, help="detection confidence threshold")
     ap.add_argument("-vc", "--verifyConfidence", type=float, default=0.70, help="detection confidence for verification")
     ap.add_argument("-nvc", "--noVerifyConfidence", type=float, default=.98, help="initial detection confidence to skip verification")
+    ap.add_argument("-blob", "--blobFilter", type=float, default=.20, help="reject detections that are more than this fraction of the frame")
 
     # specify text file with list of URLs for camera rtsp streams
     ap.add_argument("-rtsp", "--rtspURLs", default="MYcameraURL.rtsp", help="path to file containing rtsp camera stream URLs")
@@ -716,6 +718,7 @@ def main():
     # loop over frames from the camera and display results from AI_thread
     excount=0
     aliveCount=0
+    SEND_ALIVE=100  # send MQTT message approx. every SEND_ALIVE/fps seconds to reset external "watchdog" timer for auto reboot.
     waitCnt=0
     prevUImode=UImode
     currentDT = datetime.datetime.now()
@@ -729,7 +732,7 @@ def main():
             try:
                 (img, cami, personDetected, dt, ai, bp) = results.get(True,0.100)
             except:
-                aliveCount = (aliveCount+1) % 200   # MQTTcam images stop while Lorex reboots, recovers eventually so keep alive
+                aliveCount = (aliveCount+1) % SEND_ALIVE   # MQTTcam images stop while Lorex reboots, recovers eventually so keep alive
                 if aliveCount == 0:
                     client.publish("AmAlive", "true", 0, False)
                 waitCnt+=1
@@ -798,7 +801,7 @@ def main():
                     if key == ord("q"): # if the `q` key was pressed, break from the loop
                         QUIT=True   # exit main loop
                         continue
-                aliveCount = (aliveCount+1) % 200
+                aliveCount = (aliveCount+1) % SEND_ALIVE
                 if aliveCount == 0:
                     client.publish("AmAlive", "true", 0, False)
                 if prevUImode != UImode:
@@ -906,6 +909,7 @@ def main():
 # All spacial and "blob" false detection filtering is moved to the -mqtt controller host instead of being done here.
 def TPU_thread(results, inframe, model, labels, Ncameras, PREPROCESS_DIMS, confidence, noVerifyNeeded, verifyConf):
     global QUIT
+    global blobThreshold    # so far, MobileNet-SSDv2 hasn't needed the blob filter, needed 20FEB2020wbk
     waits=0
     drops=0
     fcnt=0
@@ -968,6 +972,8 @@ def TPU_thread(results, inframe, model, labels, Ncameras, PREPROCESS_DIMS, confi
                 cv2.rectangle(image, (startX, startY), (endX, endY),(0, 255, 0), 2)
                 xlen=endX-startX
                 ylen=endY-startY
+                if float(xlen*ylen)/(w*h) > blobThreshold:     # detection filling too much of the frame is bogus
+                   continue
                 xcen=int((startX+endX)/2)
                 ycen=int((startY+endY)/2)
                 boxPoints=(startX,startY, endX,endY, xcen,ycen, xlen,ylen)
