@@ -671,7 +671,7 @@ def main():
         threadLock = Lock()
         threadsRunning = 0
         for i in range(Nrtsp):
-            o.append(Thread(target=rtsp_thread, args=(inframe[i+Nonvif], i, rtspURL[i])))
+            o.append(Thread(target=rtsp_thread, args=(inframe[i+Nonvif], i+Nonvif, rtspURL[i])))
             o[i+Nonvif].start()
         VCoffset=VirtCamOffset
         for i in range(Nvirt):
@@ -737,6 +737,7 @@ def main():
     # loop over frames from the camera and display results from AI_thread
     excount=0
     aliveCount=0
+    SEND_ALIVE=100  # send MQTT message approx. every SEND_ALIVE/fps seconds to reset external "watchdog" timer for auto reboot.
     waitCnt=0
     prevUImode=UImode
     currentDT = datetime.datetime.now()
@@ -750,7 +751,7 @@ def main():
             try:
                 (img, cami, personDetected, dt, ai, bp) = results.get(True,0.100)
             except:
-                aliveCount = (aliveCount+1) % 200   # MQTTcam images stop while Lorex reboots, recovers eventually so keep alive
+                aliveCount = (aliveCount+1) % SEND_ALIVE   # MQTTcam images stop while Lorex reboots, recovers eventually so keep alive
                 if aliveCount == 0:
                     client.publish("AmAlive", "true", 0, False)
                 waitCnt+=1
@@ -819,7 +820,7 @@ def main():
                     if key == ord("q"): # if the `q` key was pressed, break from the loop
                         QUIT=True   # exit main loop
                         continue
-                aliveCount = (aliveCount+1) % 100
+                aliveCount = (aliveCount+1) % SEND_ALIVE
                 if aliveCount == 0:
                     client.publish("AmAlive", "true", 0, False)
                 if prevUImode != UImode:

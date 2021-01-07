@@ -403,6 +403,7 @@ def main():
     confidence = args["confidence"]
     verifyConf = args["verifyConfidence"]
     noVerifyNeeded = args["noVerifyConfidence"]
+    blobThreshold = args["blobFilter"]
     MQTTcameraServer = args["mqttCameraBroker"]
     Nmqtt = args["NmqttCams"]
     camList=args["mqttCamList"]
@@ -544,7 +545,7 @@ def main():
 
     # *** allocate queues
     # we simply make one queue for each camera, rtsp stream, and MQTTcamera
-    QDEPTH = 2      # bump up for trial of "read queue if full and then write to queue" in camera input thread
+    QDEPTH = 3      # bump up for trial of "read queue if full and then write to queue" in camera input thread
 ##    QDEPTH = 1      # small values improve latency
     print("[INFO] allocating camera and stream image queues...")
     mqttCamOffset = Ncameras
@@ -557,7 +558,8 @@ def main():
     if Nmqtt > 0:
         print("[INFO] allocating " + str(Nmqtt) + " MQTT image queues...")
 ##    results = Queue(2*Ncameras)
-    results = Queue(int(Ncameras/2)+1)
+###    results = Queue(int(Ncameras/2)+1)
+    results = Queue(Ncameras+1)
     inframe = list()
     for i in range(Ncameras):
         inframe.append(Queue(QDEPTH))
@@ -683,7 +685,7 @@ def main():
         threadLock = Lock()
         threadsRunning = 0
         for i in range(Nrtsp):
-            o.append(Thread(target=rtsp_thread, args=(inframe[i+Nonvif], i, rtspURL[i])))
+            o.append(Thread(target=rtsp_thread, args=(inframe[i+Nonvif], i+Nonvif, rtspURL[i])))
             o[i+Nonvif].start()
         VCoffset=VirtCamOffset
         for i in range(Nvirt):
