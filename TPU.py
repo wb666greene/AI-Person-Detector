@@ -1427,7 +1427,7 @@ def onvif_thread(inframe, camn, URL):
     while not QUIT:
         # grab the frame
         try:
-            r = requests.get(URL)
+            r = requests.get(URL, timeout=1.0)
             i = Image.open(BytesIO(r.content))
             frame = np.array(i)
             frame=cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -1440,8 +1440,8 @@ def onvif_thread(inframe, camn, URL):
             if not Error:   # suppress the zillions of sequential error messages while it recovers
                 currentDT = datetime.datetime.now()
                 ## printing the error string hasn't been particularly informative
-                ##print('Onvif cam'+ str(camn) + ': ' + str(e) + URL[0:30] + ' --- ' + currentDT.strftime(" %Y-%m-%d %H:%M:%S"))
-                print('[Error!] Onvif cam'+ str(camn) + ': ' +  URL[0:33] + ' --- ' + currentDT.strftime(" %Y-%m-%d %H:%M:%S"))
+                print('[Error!] Onvif cam'+ str(camn) + ': ' + currentDT.strftime(" %Y-%m-%d %H:%M:%S")  + URL[0:33] + ' --- ' + str(e))
+                ##print('[Error!] Onvif cam'+ str(camn) + ': ' +  URL[0:33] + ' --- ' + currentDT.strftime(" %Y-%m-%d %H:%M:%S"))
             frame = None
             Error=True
             time.sleep(5.0)     # let other threads have more time while this camera recovers, which sometimes takes minutes

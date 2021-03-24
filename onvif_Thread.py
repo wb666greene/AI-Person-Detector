@@ -17,7 +17,7 @@ def onvif_thread(inframe, camn, URL, QUITf):
     while not QUITf():
         # grab the frame
         try:
-            r = requests.get(URL)
+            r = requests.get(URL, timeout=1.0)
             i = Image.open(BytesIO(r.content))
             frame = np.array(i)
             frame=cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -30,14 +30,15 @@ def onvif_thread(inframe, camn, URL, QUITf):
             if not Error:   # suppress the zillions of sequential error messages while it recovers
                 currentDT = datetime.datetime.now()
                 ## printing the error string hasn't been particularly informative
-                ##print('Onvif cam'+ str(camn) + ': ' + str(e) + URL[0:30] + ' --- ' + currentDT.strftime(" %Y-%m-%d %H:%M:%S"))
-                print('[Error!] Onvif cam'+ str(camn) + ': ' +  URL[0:33] + ' --- ' + currentDT.strftime(" %Y-%m-%d %H:%M:%S"))
+                print('[Error!] Onvif cam'+ str(camn) + ': ' + currentDT.strftime(" %Y-%m-%d %H:%M:%S")  + URL[0:33] + ' --- ' + str(e))
+                ##print('[Error!] Onvif cam'+ str(camn) + ': ' +  URL[0:33] + ' --- ' + currentDT.strftime(" %Y-%m-%d %H:%M:%S"))
             frame = None
             Error=True
             time.sleep(5.0)     # let other threads have more time while this camera recovers, which sometimes takes minutes
         try:
             if frame is not None and not QUITf():
-                inframe.put((frame, camn), True, 0.200)
+                imageDT = datetime.datetime.now()
+                inframe.put((frame, camn, imageDT), True, 0.200)
                 ##time.sleep(sleepyTime)   # force thread switch, hopefully smoother sampling, 10Hz seems upper limit for snapshots
         except: # most likely queue is full
             if QUITf():
