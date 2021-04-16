@@ -2,6 +2,10 @@
 #
 ### AI_dev.py 13JUL2019wbk
 #
+### 16APR2021wbk
+#       Modified TPU support to try the "legacy" edgetpu API and if its not found try the new PyCoral API
+#       Tested on Ubuntu 20.04 i3-4025 CPU with PyCoral and the new MPCIe TPU module (< half the cost of USB3 TPU)
+#       Verified on Ubuntu 16.04 i7 desktop using "legacy" edgeTPU API
 ### derived from AI_OVmt.py & AI_Coral.py
 ## 21JUN2019wbk Some initial test results for AI_Coral.py, 1 Coral USB stick on USB2 i7 4 GHz quad core 6700K Desktop, 15 mqtt camera inputs,
 ### with rtsp2mqtt running on the same system (30 windows displayed on my 4K monitor 15 inputs, 15 AI results)
@@ -491,6 +495,7 @@ def main():
     global Ncameras
     global mqttFrames
     global mqttCamsOneThread
+    global __PYCORAL__
 
     # set variables from command line auguments or defaults
     nCoral = args["nTPU"]
@@ -699,19 +704,26 @@ def main():
     if nCoral > 0:
         import Coral_TPU_Thread
         print("[INFO] parsing mobilenet_ssd_v2 coco class labels for Coral TPU...")
-        labels = {}
-        for row in open("mobilenet_ssd_v2/coco_labels.txt"):
-            # unpack the row and update the labels dictionary
-            (classID, label) = row.strip().split(maxsplit=1)
-            labels[int(classID)] = label.strip()
-        modelStr="mobilenet_ssd_v2/mobilenet_ssd_v2_coco_quant_postprocess_edgetpu.tflite"
+        if Coral_TPU_Thread.__PYCORAL__ is False:
+            labels = {}
+            for row in open("mobilenet_ssd_v2/coco_labels.txt"):
+                # unpack the row and update the labels dictionary
+                (classID, label) = row.strip().split(maxsplit=1)
+                labels[int(classID)] = label.strip()
+            print("[INFO] loading Coral mobilenet_ssd_v2_coco model...")
+            model = Coral_TPU_Thread.DetectionEngine("mobilenet_ssd_v2/mobilenet_ssd_v2_coco_quant_postprocess_edgetpu.tflite")
+        else:
+            labels = Coral_TPU_Thread.read_label_file("mobilenet_ssd_v2/coco_labels.txt")
+            model = Coral_TPU_Thread.make_interpreter("mobilenet_ssd_v2/mobilenet_ssd_v2_coco_quant_postprocess_edgetpu.tflite")
+            model.allocate_tensors()
+
         # *** start Coral TPU threads
-        Ct = list()
+        Ct = list() ## not necessary only supporting a single TPU for now.
         print("[INFO] starting " + str(nCoral) + " Coral TPU AI Threads ...")
         for i in range(nCoral):
             print("... loading model...")
             Ct.append(Thread(target=Coral_TPU_Thread.AI_thread,
-                args=(results, inframe, modelStr, labels, i, cameraLock, nextCamera, Ncameras,
+                args=(results, inframe, model, labels, i, cameraLock, nextCamera, Ncameras,
                     PREPROCESS_DIMS, confidence, noVerifyNeeded, verifyConf, dbg, QUITf, blobThreshold)))
             Ct[i].start()
 
@@ -907,6 +919,7 @@ def main():
     # loop over frames from the camera and display results from AI_thread
     excount=0
     aliveCount=0
+    SEND_ALIVE=100  # send MQTT message approx. every SEND_ALIVE/fps seconds to reset external "watchdog" timer for auto reboot.
     waitCnt=0
     prevUImode=UImode
     currentDT = datetime.datetime.now()
@@ -925,7 +938,7 @@ def main():
             except:
                 waitCnt+=1
                 img=None
-                aliveCount = (aliveCount+1) % 200   # MQTTcam images stop while Lorex reboots, recovers eventually so keep alive
+                aliveCount = (aliveCount+1) % SEND_ALIVE   # MQTTcam images stop while Lorex reboots, recovers eventually so keep alive
                 if aliveCount == 0:
                     client.publish("AmAlive", "true", 0, False)
                 continue
@@ -975,7 +988,7 @@ def main():
                     if key == ord("q"): # if the `q` key was pressed, break from the loop
                         QUIT=True   # exit main loop
                         continue
-                aliveCount = (aliveCount+1) % 200
+                aliveCount = (aliveCount+1) % SEND_ALIVE
                 if aliveCount == 0:
                     client.publish("AmAlive", "true", 0, False)
                 if prevUImode != UImode:

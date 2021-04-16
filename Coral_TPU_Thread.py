@@ -1,25 +1,49 @@
 #! /usr/bin/python3
+### 16APR2021wbk
+# Google has "obsoleted" the Python edgetpu API and replaced it with the PyCoral API
+# Unfortunately the old and the new can't coexist on the same system.  The issue seems to be at a system library
+# level and doesn't seem solvable with Python virtual environments.  Seems goofy to me that they couldn't just
+# give the new incompatible system library a different name so they could coexist.
+#
+# I've added conditional code to allow the "legacy" edgetpu library to work if its there, and swtich to the PyCoral
+# API if its not.  As far as I can tell, the main benefit to PyCoral is that it supports the new M.2 & MPCIe TPU hardware
+# these may be a bit faster, but best is that they are < half the price of the USB3 TPU.  Now the search begins for inexpensive
+# IOT class computers with M.2 and/or MPCIe slots.  I've tested the MPCIe module and this software on an i3-4025.
+#
 
 import numpy as np
 import cv2
 import datetime
 from PIL import Image
 from io import BytesIO
-from edgetpu.detection.engine import DetectionEngine
 from imutils.video import FPS
-from edgetpu import __version__ as edgetpu_version
+# TPU
+global __PYCORAL__
+try:
+    from edgetpu.detection.engine import DetectionEngine
+    from edgetpu import __version__ as edgetpu_version
+    __PYCORAL__ = False
+except ImportError:
+    print("[INFO]: Edgetpu support not installed, trying PyCoral")
+    try:
+        from pycoral.adapters import common, detect
+        from pycoral.utils.dataset import read_label_file
+        from pycoral.utils.edgetpu import make_interpreter, get_runtime_version
+        __PYCORAL__ = True
+        edgetpu_version=get_runtime_version()
+    except ImportError:
+        print("[ERROR]: Coral TPU support is not installed, exiting ...")
+        quit()
 
 print('Edgetpu_api version: ' + edgetpu_version)
 
 
-## *** Coral TPU Thread ***  
+## *** Coral TPU Thread ***
 #******************************************************************************************************************
 #******************************************************************************************************************
-def AI_thread(results, inframe, modelStr, labels, tnum, cameraLock, nextCamera, Ncameras, 
+def AI_thread(results, inframe, model, labels, tnum, cameraLock, nextCamera, Ncameras,
                 PREPROCESS_DIMS, confidence, noVerifyNeeded, verifyConf, dbg, QUITf, blobThreshold):
-    # So far MobileNet-SSDv2 hasn't needed the blob filter.
-    print("[INFO] Loading model " + modelStr)
-    model = DetectionEngine(modelStr)
+    global __PYCORAL__
     print("[INFO] Coral TPU AI thread" + str(tnum) + " is running...")
     waits=0
     drops=0
@@ -29,14 +53,14 @@ def AI_thread(results, inframe, modelStr, labels, tnum, cameraLock, nextCamera, 
     else:
         ai = "TPU"
     cfps = FPS().start()
-    while not QUITf(): 
+    while not QUITf():
         cameraLock.acquire()
         cq=nextCamera
         nextCamera = (nextCamera+1)%Ncameras
         cameraLock.release()
         # get a frame
         try:
-            (image, cam) = inframe[cq].get(True,0.100)
+            (image, cam, imageDT) = inframe[cq].get(True,0.100)
         except:
             image = None
             waits+=1
@@ -49,22 +73,39 @@ def AI_thread(results, inframe, modelStr, labels, tnum, cameraLock, nextCamera, 
         zoom=image.copy()   # for zoomed in verification run
         frame = cv2.cvtColor(cv2.resize(image, PREPROCESS_DIMS), cv2.COLOR_BGR2RGB)
         frame = Image.fromarray(frame)
-        if edgetpu_version < '2.11.2':
-            detection = model.DetectWithImage(frame, threshold=confidence, keep_aspect_ratio=True, relative_coord=False)
+        # run the inference
+        if __PYCORAL__ is False:
+            if edgetpu_version < '2.11.2':
+                detection = model.DetectWithImage(frame, threshold=confidence, keep_aspect_ratio=True, relative_coord=False)
+            else:
+                detection = model.detect_with_image(frame, threshold=confidence, keep_aspect_ratio=True, relative_coord=False)
         else:
-            detection = model.detect_with_image(frame, threshold=confidence, keep_aspect_ratio=True, relative_coord=False)
+            common.set_input(model,frame)
+            model.invoke()
+            detection=detect.get_objects(model, confidence, (1.0,1.0))
         cfps.update()    # update the FPS counter
         fcnt+=1
-        imageDT = datetime.datetime.now()
+###        imageDT = datetime.datetime.now()
         boxPoints=(0,0, 0,0, 0,0, 0,0)  # startX, startY, endX, endY, Xcenter, Ycenter, Xlength, Ylength
         # loop over the detection results
         for r in detection:
-            if r.label_id == 0:
-                # extract the bounding box and box and predicted class label
-                box = r.bounding_box.flatten().astype("int")
-                label = labels[r.label_id]
+            found=False
+            if __PYCORAL__ is False:
+                if r.label_id == 0:
+                    # extract the bounding box and box and predicted class label
+                    box = r.bounding_box.flatten().astype("int")
+                    ##detect_label = labels[r.label_id] #not being used anywhere now
+                    (startX, startY, endX, endY) = box.flatten().astype("int")
+                    found=True
+            else:
+                if r.id == 0:
+                    startX=r.bbox.xmin
+                    startY=r.bbox.ymin
+                    endX=r.bbox.xmax
+                    endY=r.bbox.ymax
+                    found=True
+            if found:
                 initialConf=r.score
-                (startX, startY, endX, endY) = box.flatten().astype("int")
                 X_MULTIPLIER = float(w) / PREPROCESS_DIMS[0]
                 Y_MULTIPLIER = float(h) / PREPROCESS_DIMS[1]
                 startX = int(startX * X_MULTIPLIER)
@@ -80,14 +121,14 @@ def AI_thread(results, inframe, modelStr, labels, tnum, cameraLock, nextCamera, 
                 boxPoints=(startX,startY, endX,endY, xcen,ycen, xlen,ylen)
                 # draw the bounding box and label on the image
                 cv2.rectangle(image, (startX, startY), (endX, endY),(0, 255, 0), 2)
-                label = "{:.1f}%  C:{},{}  W:{} H:{}  UL:{},{}  LR:{},{} {}".format(initialConf * 100, 
+                label = "{:.1f}%  C:{},{}  W:{} H:{}  UL:{},{}  LR:{},{} {}".format(initialConf * 100,
                         str(xcen), str(ycen), str(xlen), str(ylen), str(startX), str(startY), str(endX), str(endY), ai)
                 cv2.putText(image, label, (2, (h-5)-(ndetected*28)), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 0), 2, cv2.LINE_AA)
                 personDetected = True
                 ndetected=ndetected+1
                 break   # one person detection is enough
         # zoom in and repeat inference to verify detection
-        if personDetected and initialConf < noVerifyNeeded:  
+        if personDetected and initialConf < noVerifyNeeded:
             personDetected = False  # repeat on zoomed detection box
             try:
                 ## removing this box expansion really hurt the verification sensitivity
@@ -114,10 +155,16 @@ def AI_thread(results, inframe, modelStr, labels, tnum, cameraLock, nextCamera, 
                 continue
             frame = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
             frame = Image.fromarray(frame)
-            if edgetpu_version < '2.11.2':
-                detection = model.DetectWithImage(frame, threshold=verifyConf, keep_aspect_ratio=True, relative_coord=False)
+            # run the zoom in and verify inference
+            if __PYCORAL__ is False:
+                if edgetpu_version < '2.11.2':
+                    detection = model.DetectWithImage(frame, threshold=verifyConf, keep_aspect_ratio=True, relative_coord=False)
+                else:
+                 detection = model.detect_with_image(frame, threshold=verifyConf, keep_aspect_ratio=True, relative_coord=False)
             else:
-                detection = model.detect_with_image(frame, threshold=verifyConf, keep_aspect_ratio=True, relative_coord=False)
+                common.set_input(model,frame)
+                model.invoke()
+                detection=detect.get_objects(model, verifyConf, (1.0,1.0))
             cfps.update()    # update the FPS counter
             # loop over the detection results
             imgDT = datetime.datetime.now()
@@ -125,13 +172,22 @@ def AI_thread(results, inframe, modelStr, labels, tnum, cameraLock, nextCamera, 
             cv2.putText(img, tlabel, (2, 28), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 0), 2, cv2.LINE_AA)
             boxPointsV = (0,0, 0,0, 0,0, 0,0)  # startX, startY, endX, endY, 0, 0, 0, 0 only first four are used for dbg plots
             for r in detection:
-                if r.label_id == 0:
-                    if dbg:
+                found=False
+                if __PYCORAL__ is False:
+                    if r.label_id == 0:
+                        found=True
                         box = r.bounding_box.flatten().astype("int")
                         (startX, startY, endX, endY) = box.flatten().astype("int")
-                        boxPointsV = (startX,startY, endX,endY, 0,0, 0,0)
-                        label = labels[r.label_id]
-                        text = "{}: {:.1f}%".format(label, r.score * 100)
+                else:
+                    if r.id == 0:
+                        found=True
+                        startX=r.bbox.xmin
+                        startY=r.bbox.ymin
+                        endX=r.bbox.xmax
+                        endY=r.bbox.ymax
+                if found:
+                    if dbg:
+                        text = "{}: {:.1f}%".format("Person", initialConf * 100)
                         cv2.putText(img, text, (2, min(270,endY)), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 0), 2)
                         cv2.rectangle(img, (startX, startY), (endX, endY),(0, 255, 0), 2)
                         # draw the person bounding box and label on the verification image and show verify confidence

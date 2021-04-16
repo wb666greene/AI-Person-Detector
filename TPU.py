@@ -1,10 +1,25 @@
 #!/usr/bin/env python3
 #
+### 16APR2021wbk
+# Google has "obsoleted" the Python edgetpu API and replaced it with the PyCoral API
+# Unfortunately the old and the new can't coexist on the same system.  The issue seems to be at a system library
+# level and doesn't seem solvable with Python virtual environments.  Seems goofy to me that they couldn't just
+# give the new incompatible system library a different name so they could coexist.
+#
+# I've added conditional code to allow the "legacy" edgetpu library to work if its there, and swtich to the PyCoral
+# API if its not.  As far as I can tell, the main benefit to PyCoral is that it supports the new M.2 & MPCIe TPU hardware
+# these may be a bit faster, but best is that they are < half the price of the USB3 TPU.  Now the search begins for inexpensive
+# IOT class computers with M.2 and/or MPCIe slots.
+# I've tested the MPCIe module and this software on an i3-4025 running Ubuntu 20.04 and PyCoral API and verified the "legacy"
+# edgetpu API on i7 desktop running Ubuntu 16.04
+#
+#
 ### 26JUL2020wbk
 # Having stumbled onto some easy to use code for fisheye camera "de-warping" it was pretty straghtforward
 # to modify the virtual camera thread to de-warp and queue multiple virtual PTZ views from a single fisheye camera.
-# As with Virtual cameras, Fisheye setup is done by editing the code as there are too many parameters for a "simple"
-# configuration file to work.
+# Fisheye setup is done by running the C++ fisheye_windowCV4 utility to create the virtual PTZ views saved as fisheye.rtsp
+# Initial run is very slow as buildig the virtual PTZ maps is very slow in Python, but the maps are saved as fisheyeN.map
+# files where N is the nember of the physical fisheye camera. These are loaded instead of being calculated on subsequent runs.
 # Regular camera images can be used to test the code, Roll Pitch Yaw movements don't work as expected but the process
 # can be debugged.
 #
@@ -103,17 +118,31 @@ import datetime
 import requests
 from PIL import Image
 from io import BytesIO
-
+# for saving PTZ view maps
+import pickle
 # threading stuff
 from queue import Queue
 from threading import Thread, Lock
 
 # TPU
-from edgetpu.detection.engine import DetectionEngine
-from edgetpu import __version__ as edgetpu_version
+global __PYCORAL__
+try:
+    from edgetpu.detection.engine import DetectionEngine
+    from edgetpu import __version__ as edgetpu_version
+    __PYCORAL__ = False
+except ImportError:
+    print("[INFO]: Edgetpu support not installed, trying PyCoral")
+    try:
+        from pycoral.adapters import common, detect
+        from pycoral.utils.dataset import read_label_file
+        from pycoral.utils.edgetpu import make_interpreter, get_runtime_version
+        __PYCORAL__ = True
+        edgetpu_version=get_runtime_version()
+    except ImportError:
+        print("[ERROR]: Coral TPU support is not installed, exiting ...")
+        quit()
 
-# for saving PTZ view maps
-import pickle
+
 
 
 # *** System Globals
@@ -139,7 +168,6 @@ global CamName
 
 ## Specific for my use
 # Map Lorex camera names to camera numbers, Lorex uses 1-16, Python uses 0-15
-## After Lorex died, I reorderd the cameras on the Qcamera DVR-16 replacement for "better" mosaic display
 LorexName = [
     "MailBox",
     "HummingbirdLeft",      # 4K
@@ -191,7 +219,7 @@ print("**************************************************************")
 currentDT = datetime.datetime.now()
 print("*** " + currentDT.strftime(" %Y-%m-%d %H:%M:%S"))
 print("[INFO] using openCV-" + cv2.__version__)
-print('Edgetpu_api version: ' + edgetpu_version)
+print('[INFO] Edgetpu_api: ' + edgetpu_version)
 
 
 # *** Function definitions
@@ -635,18 +663,21 @@ def main():
 
 
     # *** setup and start Coral AI threads
-    # Might consider moving this into the thread function.
     ### Setup Coral AI
     # initialize the labels dictionary
     print("[INFO] parsing mobilenet_ssd_v2 coco class labels for Coral TPU...")
-    labels = {}
-    for row in open("mobilenet_ssd_v2/coco_labels.txt"):
-        # unpack the row and update the labels dictionary
-        (classID, label) = row.strip().split(maxsplit=1)
-        labels[int(classID)] = label.strip()
-    print("[INFO] loading Coral mobilenet_ssd_v2_coco model...")
-    model = DetectionEngine("mobilenet_ssd_v2/mobilenet_ssd_v2_coco_quant_postprocess_edgetpu.tflite")
-
+    if __PYCORAL__ is False:
+        labels = {}
+        for row in open("mobilenet_ssd_v2/coco_labels.txt"):
+            # unpack the row and update the labels dictionary
+            (classID, label) = row.strip().split(maxsplit=1)
+            labels[int(classID)] = label.strip()
+        print("[INFO] loading Coral mobilenet_ssd_v2_coco model...")
+        model = DetectionEngine("mobilenet_ssd_v2/mobilenet_ssd_v2_coco_quant_postprocess_edgetpu.tflite")
+    else:
+        labels = read_label_file("mobilenet_ssd_v2/coco_labels.txt")
+        model = make_interpreter("mobilenet_ssd_v2/mobilenet_ssd_v2_coco_quant_postprocess_edgetpu.tflite")
+        model.allocate_tensors()
 
 
     # *** Open second MQTT client thread for MQTTcam/# messages for "MQTT cameras"
@@ -908,10 +939,11 @@ def main():
 ## *** Coral TPU Thread ***
 #******************************************************************************************************************
 #******************************************************************************************************************
-# All spacial and "blob" false detection filtering is moved to the -mqtt controller host instead of being done here.
+# All spacial filtering (virtual fence polygon) is moved to the -mqtt controller host instead of being done here.
 def TPU_thread(results, inframe, model, labels, Ncameras, PREPROCESS_DIMS, confidence, noVerifyNeeded, verifyConf):
     global QUIT
     global blobThreshold    # so far, MobileNet-SSDv2 hasn't needed the blob filter, needed 20FEB2020wbk
+    global __PYCORAL__
     waits=0
     drops=0
     fcnt=0
@@ -919,7 +951,7 @@ def TPU_thread(results, inframe, model, labels, Ncameras, PREPROCESS_DIMS, confi
     nextCamera=0
     ai = "TPU"
     cfps = FPS().start()
-##    # the region filter can also be done in the node-red instead, doing it here is easier for only one rtsp stream and two virtual cameras.
+##    # the region filter can also be done in the node-red instead, doing it here is easier for only two rtsp streams each with two virtual cameras.
 ##    poly = [
 ##        [[50,0],[0,1280],[1280,430],[0,350]],
 ##        [[0,0],[1280,0],[480,440],[0,440]],
@@ -944,22 +976,38 @@ def TPU_thread(results, inframe, model, labels, Ncameras, PREPROCESS_DIMS, confi
         zoom=image.copy()   # for zoomed in verification run
         frame = cv2.cvtColor(cv2.resize(image, PREPROCESS_DIMS), cv2.COLOR_BGR2RGB)
         frame = Image.fromarray(frame)
-        if edgetpu_version < '2.11.2':
-            detection = model.DetectWithImage(frame, threshold=confidence, keep_aspect_ratio=True, relative_coord=False)
+        # run the inference
+        if __PYCORAL__ is False:
+            if edgetpu_version < '2.11.2':
+                detection = model.DetectWithImage(frame, threshold=confidence, keep_aspect_ratio=True, relative_coord=False)
+            else:
+                detection = model.detect_with_image(frame, threshold=confidence, keep_aspect_ratio=True, relative_coord=False)
         else:
-            detection = model.detect_with_image(frame, threshold=confidence, keep_aspect_ratio=True, relative_coord=False)
+            common.set_input(model,frame)
+            model.invoke()
+            detection=detect.get_objects(model, confidence, (1.0,1.0))
         cfps.update()    # update the FPS counter
         fcnt+=1
-        ##imageDT = datetime.datetime.now()
         # loop over the detection results
         boxPoints=(0,0, 0,0, 0,0, 0,0)  # startX, startY, endX, endY, Xcenter, Ycenter, Xlength, Ylength
         for r in detection:
-            if r.label_id == 0:
-                # extract the bounding box and box and predicted class label
-                box = r.bounding_box.flatten().astype("int")
-                label = labels[r.label_id]
+            found=False
+            if __PYCORAL__ is False:
+                if r.label_id == 0:
+                    # extract the bounding box and box and predicted class label
+                    box = r.bounding_box.flatten().astype("int")
+                    ##detect_label = labels[r.label_id] #not being used anywhere now
+                    (startX, startY, endX, endY) = box.flatten().astype("int")
+                    found=True
+            else:
+                if r.id == 0:
+                    startX=r.bbox.xmin
+                    startY=r.bbox.ymin
+                    endX=r.bbox.xmax
+                    endY=r.bbox.ymax
+                    found=True
+            if found:
                 initialConf=r.score
-                (startX, startY, endX, endY) = box.flatten().astype("int")
                 X_MULTIPLIER = float(w) / PREPROCESS_DIMS[0]
                 Y_MULTIPLIER = float(h) / PREPROCESS_DIMS[1]
                 startX = int(startX * X_MULTIPLIER)
@@ -967,6 +1015,7 @@ def TPU_thread(results, inframe, model, labels, Ncameras, PREPROCESS_DIMS, confi
                 endX = int(endX * X_MULTIPLIER)
                 endY = int(endY * Y_MULTIPLIER)
 ##                # Screen for lower right of bounding box inside region of interest, can do here or in node-red
+                  # More flexibility to do this in node-red before the images are saved or alerted.
 ##                if point_inside_polygon(endX,endY,poly[cam]):
 ##                    boxPoints=(startX,startY, endX,endY)
 ##                else:
@@ -1014,29 +1063,39 @@ def TPU_thread(results, inframe, model, labels, Ncameras, PREPROCESS_DIMS, confi
                 continue
             frame = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
             frame = Image.fromarray(frame)
-            if edgetpu_version < '2.11.2':
-                detection = model.DetectWithImage(frame, threshold=verifyConf, keep_aspect_ratio=True, relative_coord=False)
+            # run the zoom in and verify inference
+            if __PYCORAL__ is False:
+                if edgetpu_version < '2.11.2':
+                    detection = model.DetectWithImage(frame, threshold=verifyConf, keep_aspect_ratio=True, relative_coord=False)
+                else:
+                 detection = model.detect_with_image(frame, threshold=verifyConf, keep_aspect_ratio=True, relative_coord=False)
             else:
-                detection = model.detect_with_image(frame, threshold=verifyConf, keep_aspect_ratio=True, relative_coord=False)
+                common.set_input(model,frame)
+                model.invoke()
+                detection=detect.get_objects(model, verifyConf, (1.0,1.0))
             cfps.update()    # update the FPS counter
             # loop over the detection results
-            boxPointsV = (0,0, 0,0, 0,0, 0,0)  # startX, startY, endX, endY, 0, 0, 0, 0 only first four are used for dbg plots
             for r in detection:
-              if r.label_id == 0:
-                  if r.score > verifyConf:
+                found=False
+                if __PYCORAL__ is False:
+                    if r.label_id == 0:
+                        found=True
+                else:
+                    if r.id == 0:
+                        found=True
+                if found:
+                    if r.score > verifyConf:
                         personDetected = True
                         text = "Verify: {:.1f}%".format(r.score * 100)   # show verification confidence
                         cv2.putText(image, text, (2, 28), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 0), 2)
                         break    # only need one verification
-        else:
-            ndetected=0     # flag that verification not needed
         # Queue results
         try:
             if personDetected:
                 results.put((image, cam, personDetected, imageDT, ai, boxPoints), True, 1.0)    # try not to drop frames with detections
             else:
                 # change image to zoom if you don't want unverified detection box on displayed/saved image, at low frame rates the box is informative
-##                results.put((image, cam, personDetected, imageDT, "Coral"), True, 0.033)
+                ##results.put((image, cam, personDetected, imageDT, "Coral"), True, 0.016)
                 results.put((image, cam, personDetected, imageDT, ai, boxPoints), True, 0.016)
         except:
             # presumably results queue was full, main thread too slow.
