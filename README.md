@@ -5,11 +5,15 @@ You can see the system in live action at: https://youtu.be/nUatA9-DWGY
 
 The major upgrade is using the Coral TPU and MobilenetSSD-v2_coco for the AI.  The Movidius NCS/NCS2 are still supported, but the *.bin and *.xml files for the MobilenetSSD-v2_coco model are too large to upload to GitHub.
 
-The Ai is pure Python3 code and should work on any system that can run a python3 version supported by Google Coral TPU or Intel OpenVINO installers with an OpenCV version capable of decoding h264/h.265 rtsp streams.  If you have cameras capable of delivering "full resolution" Onvif snapshots, are using USB webcams, mjpeg stream cameras (motion or motioneyeOS), or the PiCamera module, then the h.264/h.265 decoding issue is moot.  
+The AI is pure Python3 code and should work on any system that can run a python3 version supported by Google Coral TPU or Intel OpenVINO installers with an OpenCV version capable of decoding h264/h.265 rtsp streams.  If you have cameras capable of delivering "full resolution" Onvif snapshots, are using USB webcams, mjpeg stream cameras (motion or motioneyeOS), or the PiCamera module, then the h.264/h.265 decoding issue is moot.  
 
 Edit: 8Dec20 OpenVINO R2020.3 seems to have fixed the h.264/h.265 decoding issue, this is the last OpenVINO version to support the original Movidius NCS.  OpenVINO R2021.1 now suppots Ubuntu 20.04, but drops support for Ubuntu 16.04, it also breaks loading of the bin and xml files I've made for the MobilenetSSD-v2_coco model.  The TPU performance is so much better than the NCS/NCS2 in this application that I'm not moving beyond OpenVINO R2020.3 anytime soon.
 
-## New! TPU support upgraded for Google's recent PyCoral API which supports USB3, M.2, and MPCIe devices.
+# New! TPU support upgraded for Google's recent PyCoral API which supports USB3, M.2, and MPCIe devices.
+2MAY21 You can build a nice standalone system with Ubuntu 20.04 (I prefer the Mate flavor) and an old i3, i5 , or i7 laptop and the correct MPCIe/M.2 TPU devices and some IP Netcams or add it to a stand-alone security DVR/NVR system.  Find out which type of MPCIe/M.2 slot your laptop has and order the correct TPU module (~$25).  This will likely be the most difficult part of the endeavor. My T410 had a WiFi module in its "mini PCIe" slot, being only WiFi G no great loss to remove it and anyway you will want GB Ethernet to connect to the cameras or DVR/NVR rtsp streams
+
+I'm working on a Wiki entry howto uisng my old Lenovo T410 i5-540m laptop as an example.
+
 16APR21 AI_dev.py, Coral_TPU_Thread.py, and TPU.py have been modified to try the legacy edgetpu API first and if its not installed to try the new PyCoral API.  I've verified the legacy code on my Ubuntu 16.04 i7 Desktop with a USB3 TPU, and I've tested the PyCoral support on a Ubuntu 20.04 i3-4025 with an MPCIe TPU module.  The M.2 and MPCIe devices cost less than half the USB3 TPU!  Lets hope M.2/MPCIe interfaces become common on the next wave of small IOT class machines.
 
 ## Support for virtual PTZ using "fisheye" cameras.
