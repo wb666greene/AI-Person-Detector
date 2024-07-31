@@ -1,3 +1,8 @@
+I've been laid up for about a year and this system has continued to evolve, but with GitHub forcing TFA it has been troublesome to try and keep this repo upd to date.  I've started a new page with the updates I've been running since just before I got laid up:
+https://github.com/wb666greene/AI-Person-Detector-with-YOLO-Verification/blob/main/README.md
+The major improvement was adding a YOLO verification when a person has been detected.
+
+
 This is the next step in the evolution of: https://github.com/wb666greene/AI_enhanced_video_security
 For some sample images of this AI in real-world action checkout the wiki:
 https://github.com/wb666greene/AI-Person-Detector/wiki/Camera-notes
